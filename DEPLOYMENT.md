@@ -6,6 +6,35 @@ Cílová sestava je Vercel (aplikace) + Neon (PostgreSQL) + Vercel Blob (přílo
 Postup předpokládá, že účty zakládá majitel studia, protože k nim patří
 fakturace i doména.
 
+## Kdo může projekt na Vercel připojit
+
+**Repozitář může do Vercelu naimportovat jen jeho vlastník.** Spolupracovník
+u osobního repozitáře to udělat nemůže, i když má právo psát. U repozitáře
+vlastněného organizací to jde, ale jen jako Owner nebo Member organizace,
+nikoli jako outside collaborator.
+
+Tento repozitář je osobní a patří účtu `jakubsovadina`. Máme tedy tři cesty:
+
+1. **Import provede vlastník repozitáře.** Nejjednodušší, ale správu nasazení
+   pak má jen on. Hobby plán nezná členy týmu, takže druhý člověk k projektu
+   přístup nedostane.
+2. **Přesunout repozitář do GitHub organizace** a oba v ní být Members.
+   Organizace je zdarma a importovat pak může kdokoli z nich. Pro dvoučlenný
+   tým je to nejčistší řešení a vyřeší i sdílení minut pro GitHub Actions.
+3. **Nasadit z příkazové řádky** pomocí `vercel --prod`. Kód se nahrává
+   z lokálního stroje, takže na vlastnictví repozitáře nezáleží. Odpadá ale
+   automatické nasazení po pushi, takže se to hodí spíš na první zkoušku
+   než na trvalý provoz.
+
+### Pozor na licenci Vercelu
+
+Hobby plán je určen jen pro osobní nekomerční projekty. Nástroj, kterým se
+řídí platené zakázky, komerční je. A pokud mají mít právo nasazovat dva lidé,
+je potřeba plán Pro, který se platí za každého člena. Než se pro Vercel
+rozhodnete, spočítejte si to — aplikace je běžný Next.js s Node runtime,
+takže poběží i na malém VPS nebo na Railway či Renderu, kde se neplatí
+za člena týmu.
+
 ## 1. Databáze (Neon)
 
 1. Založte projekt na [neon.tech](https://neon.tech), region Frankfurt.
