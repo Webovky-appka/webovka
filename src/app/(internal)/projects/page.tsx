@@ -4,7 +4,7 @@ import { Phase, ProjectStatus, type Prisma } from "@prisma/client";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
-import { formatRelativeDays } from "@/lib/format";
+import { formatRelativeDays, isContactStale } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
@@ -145,9 +145,7 @@ export default async function ProjectsPage(props: {
             const total = project.tasks.length;
             const done = project.tasks.filter((task) => task.done).length;
             const lastContact = project.client.messages[0]?.createdAt ?? null;
-            const stale =
-              lastContact !== null &&
-              Date.now() - lastContact.getTime() > 14 * 86_400_000;
+            const stale = isContactStale(lastContact);
 
             return (
               <li key={project.id}>

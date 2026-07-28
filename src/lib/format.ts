@@ -33,6 +33,15 @@ export function formatRelativeDays(value: Date | null | undefined): string {
   return `před ${Math.floor(days / 30)} měsíci`;
 }
 
+/** Klient, u kterého se dlouho nic nedělo. Prahová hodnota je ve dnech. */
+export function isContactStale(
+  value: Date | null | undefined,
+  days = 14,
+): boolean {
+  if (!value) return false;
+  return Date.now() - value.getTime() > days * 86_400_000;
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
