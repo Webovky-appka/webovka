@@ -34,6 +34,12 @@ export default async function InternalLayout({
               >
                 Klienti
               </Link>
+              <Link
+                href="/settings"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Nastavení
+              </Link>
             </nav>
           </div>
 

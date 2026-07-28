@@ -27,6 +27,9 @@ export default function GlobalError({
             Došlo k neočekávané chybě. Zkuste stránku načíst znovu, případně to
             zkuste za chvíli.
           </p>
+          {/* Záměrně ne next/link: ten by udělal soft navigaci, ze které se
+              rozbitý root layout nezotaví. Potřebujeme plné načtení stránky. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
             href="/"
             className="mt-5 inline-block rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
