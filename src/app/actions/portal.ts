@@ -9,6 +9,10 @@ import * as z from "zod";
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
 import { pluralCs } from "@/lib/format";
+import {
+  notifyPhaseApproved,
+  notifyPortalFeedback,
+} from "@/lib/notifications";
 import { PHASE_LABELS } from "@/lib/phases";
 import {
   MAX_PIN_ATTEMPTS,
@@ -212,7 +216,13 @@ async function loadPortalLink(token: string) {
     where: { tokenHash: hashPortalToken(token) },
     include: {
       project: {
-        select: { id: true, clientId: true, name: true, phase: true },
+        select: {
+          id: true,
+          clientId: true,
+          name: true,
+          phase: true,
+          client: { select: { companyName: true } },
+        },
       },
     },
   });
@@ -263,6 +273,13 @@ export async function approvePhase(
     body: `Klient schválil fázi „${PHASE_LABELS[link.project.phase]}“ v portálu.`,
   });
 
+  await notifyPhaseApproved({
+    clientId: link.project.clientId,
+    companyName: link.project.client.companyName,
+    projectName: link.project.name,
+    phase: link.project.phase,
+  });
+
   revalidatePath(`/portal/${token}`);
   revalidatePath(`/clients/${link.project.clientId}`);
   return { success: "Schválení jsme zaznamenali. Děkujeme." };
@@ -297,6 +314,13 @@ export async function submitPortalFeedback(
       kind: MessageKind.PORTAL_FEEDBACK,
       body: parsed.data.body,
     },
+  });
+
+  await notifyPortalFeedback({
+    clientId: link.project.clientId,
+    companyName: link.project.client.companyName,
+    projectName: link.project.name,
+    body: parsed.data.body,
   });
 
   revalidatePath(`/portal/${parsed.data.token}`);

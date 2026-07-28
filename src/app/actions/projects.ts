@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
+import { notifyClientPhaseChanged } from "@/lib/notifications";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
@@ -88,7 +89,14 @@ export async function changePhase(formData: FormData) {
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
-    select: { id: true, clientId: true, phase: true },
+    select: {
+      id: true,
+      clientId: true,
+      phase: true,
+      name: true,
+      portalNote: true,
+      client: { select: { email: true } },
+    },
   });
   if (!project || project.phase === toPhase) return;
 
@@ -111,6 +119,13 @@ export async function changePhase(formData: FormData) {
     clientId: project.clientId,
     projectId,
     body: `${user.name} změnil fázi z „${PHASE_LABELS[project.phase]}“ na „${PHASE_LABELS[toPhase]}“.`,
+  });
+
+  await notifyClientPhaseChanged({
+    clientEmail: project.client.email,
+    projectName: project.name,
+    phase: toPhase,
+    portalNote: project.portalNote,
   });
 
   revalidatePath(`/clients/${project.clientId}`);
