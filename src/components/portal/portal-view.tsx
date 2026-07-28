@@ -9,7 +9,7 @@ import {
   type PortalActionState,
 } from "@/app/actions/portal";
 import { FormError, inputClasses } from "@/components/field";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatFileSize } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 
 type PortalData = {
@@ -23,6 +23,7 @@ type PortalData = {
   currentPhaseApproved: boolean;
   approvals: { id: string; phase: Phase; createdAt: Date }[];
   feedback: { id: string; body: string; createdAt: Date }[];
+  files: { id: string; filename: string; size: number }[];
 };
 
 export function PortalView({ data }: { data: PortalData }) {
@@ -59,6 +60,27 @@ export function PortalView({ data }: { data: PortalData }) {
           >
             {data.previewUrl}
           </a>
+        </section>
+      ) : null}
+
+      {data.files.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-medium text-slate-900">Soubory ke stažení</h2>
+          <ul className="mt-2 space-y-1.5">
+            {data.files.map((file) => (
+              <li key={file.id} className="flex flex-wrap items-baseline gap-2">
+                <a
+                  href={`/api/attachments/${file.id}`}
+                  className="text-sm break-all text-sky-700 underline hover:text-sky-900"
+                >
+                  {file.filename}
+                </a>
+                <span className="text-xs text-slate-400">
+                  {formatFileSize(file.size)}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

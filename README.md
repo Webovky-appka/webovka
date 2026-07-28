@@ -3,7 +3,8 @@
 Nástroj pro správu klientů a webových zakázek. Spojuje CRM, projektový management
 po fázích a klientský portál, ve kterém klient schvaluje fáze a píše připomínky.
 
-Zadání a rozsah jsou v [REQUIREMENTS.md](REQUIREMENTS.md).
+Zadání a rozsah jsou v [REQUIREMENTS.md](REQUIREMENTS.md), pravidla pro práci
+na projektu v [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Stack
 

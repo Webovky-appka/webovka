@@ -44,7 +44,7 @@ export default async function PortalPage(props: {
     );
   }
 
-  const [approvals, feedback] = await Promise.all([
+  const [approvals, feedback, files] = await Promise.all([
     prisma.approval.findMany({
       where: { projectId: link.projectId },
       orderBy: { createdAt: "desc" },
@@ -58,6 +58,11 @@ export default async function PortalPage(props: {
       },
       orderBy: { createdAt: "desc" },
       select: { id: true, body: true, createdAt: true },
+    }),
+    prisma.attachment.findMany({
+      where: { projectId: link.projectId, visibleInPortal: true },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, filename: true, size: true },
     }),
   ]);
 
@@ -77,6 +82,7 @@ export default async function PortalPage(props: {
           ),
           approvals,
           feedback,
+          files,
         }}
       />
     </main>

@@ -4,6 +4,7 @@ import { Phase, ProjectStatus } from "@prisma/client";
 
 import { setProjectStatus } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
+import { FilesPanel } from "@/components/client/files-panel";
 import { MessageForm } from "@/components/client/message-form";
 import { PhaseStepper } from "@/components/client/phase-stepper";
 import { ProjectPortalForm } from "@/components/client/project-portal-form";
@@ -26,6 +27,22 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+export async function generateMetadata(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await props.params;
+  const client = await prisma.client.findUnique({
+    where: { id },
+    select: { companyName: true },
+  });
+
+  return {
+    title: client
+      ? `${client.companyName} — Stavba webu`
+      : "Klient — Stavba webu",
+  };
+}
 
 export default async function ClientDetailPage(props: {
   params: Promise<{ id: string }>;
@@ -61,7 +78,7 @@ export default async function ClientDetailPage(props: {
   const selectedProject =
     client.projects.find((p) => p.id === projectParam) ?? client.projects[0];
 
-  const [tasks, messages, approvals, portalLink] = selectedProject
+  const [tasks, messages, approvals, portalLink, files] = selectedProject
     ? await Promise.all([
         prisma.task.findMany({ where: { projectId: selectedProject.id } }),
         prisma.message.findMany({
@@ -81,8 +98,13 @@ export default async function ClientDetailPage(props: {
           where: { projectId: selectedProject.id, active: true },
           orderBy: { createdAt: "desc" },
         }),
+        prisma.attachment.findMany({
+          where: { clientId: client.id },
+          orderBy: { createdAt: "desc" },
+          include: { uploadedBy: { select: { name: true } } },
+        }),
       ])
-    : [[], [], [], null];
+    : [[], [], [], null, []];
 
   const unfinishedByPhase = PHASE_ORDER.reduce(
     (acc, phase) => {
@@ -223,12 +245,11 @@ export default async function ClientDetailPage(props: {
           ) : null}
 
           {activeTab === "files" ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-              <p className="font-medium text-slate-900">Zatím žádný soubor</p>
-              <p className="mt-1 text-sm text-slate-500">
-                Smlouvy, loga, faktury a screenshoty schválených verzí.
-              </p>
-            </div>
+            <FilesPanel
+              clientId={client.id}
+              projectId={selectedProject.id}
+              files={files}
+            />
           ) : null}
 
           {activeTab === "settings" ? (
