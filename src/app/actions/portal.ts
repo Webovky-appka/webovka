@@ -8,6 +8,7 @@ import * as z from "zod";
 
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
+import { pluralCs } from "@/lib/format";
 import { PHASE_LABELS } from "@/lib/phases";
 import {
   MAX_PIN_ATTEMPTS,
@@ -176,7 +177,7 @@ export async function verifyPin(
 
     const remaining = MAX_PIN_ATTEMPTS - attempts;
     return {
-      error: `Nesprávný PIN. Zbývají ${remaining} ${remaining === 1 ? "pokus" : remaining < 5 ? "pokusy" : "pokusů"}.`,
+      error: `Nesprávný PIN. ${pluralCs(remaining, `Zbývá ${remaining} pokus`, `Zbývají ${remaining} pokusy`, `Zbývá ${remaining} pokusů`)}.`,
     };
   }
 

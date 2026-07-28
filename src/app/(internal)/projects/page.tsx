@@ -4,7 +4,7 @@ import { Phase, ProjectStatus, type Prisma } from "@prisma/client";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
-import { formatRelativeDays, isContactStale } from "@/lib/format";
+import { formatRelativeDays, isContactStale, pluralCs } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
@@ -84,7 +84,7 @@ export default async function ProjectsPage(props: {
           <p className="text-sm text-slate-500">
             {projects.length === 0
               ? "Žádná zakázka neodpovídá filtru"
-              : `${projects.length} ${projects.length === 1 ? "zakázka" : projects.length < 5 ? "zakázky" : "zakázek"}`}
+              : `${projects.length} ${pluralCs(projects.length, "zakázka", "zakázky", "zakázek")}`}
           </p>
         </div>
 

@@ -3,6 +3,7 @@
 import type { Phase } from "@prisma/client";
 
 import { changePhase } from "@/app/actions/projects";
+import { unfinishedTasksPhrase } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 
 export function PhaseStepper({
@@ -27,7 +28,7 @@ export function PhaseStepper({
 
           const warning =
             !isCurrent && index > currentIndex && unfinishedHere > 0
-              ? `Ve fázi „${PHASE_LABELS[currentPhase]}“ zbývá ${unfinishedHere} nehotových úkolů. Přesunout zakázku i tak?`
+              ? `Ve fázi „${PHASE_LABELS[currentPhase]}“ ${unfinishedTasksPhrase(unfinishedHere)}. Přesunout zakázku i tak?`
               : null;
 
           return (
@@ -75,13 +76,7 @@ export function PhaseStepper({
 
       {unfinishedHere > 0 ? (
         <p className="text-xs text-amber-700">
-          V aktuální fázi zbývá {unfinishedHere}{" "}
-          {unfinishedHere === 1
-            ? "nehotový úkol"
-            : unfinishedHere < 5
-              ? "nehotové úkoly"
-              : "nehotových úkolů"}
-          .
+          V aktuální fázi {unfinishedTasksPhrase(unfinishedHere)}.
         </p>
       ) : null}
     </div>

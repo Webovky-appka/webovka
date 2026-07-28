@@ -33,6 +33,28 @@ export function formatRelativeDays(value: Date | null | undefined): string {
   return `před ${Math.floor(days / 30)} měsíci`;
 }
 
+/** České skloňování podle počtu: 1, 2–4, 5 a více. */
+export function pluralCs(
+  count: number,
+  one: string,
+  few: string,
+  many: string,
+): string {
+  if (count === 1) return one;
+  if (count >= 2 && count <= 4) return few;
+  return many;
+}
+
+/** Celá věta včetně shody přísudku — „zbývají 3 nehotové úkoly". */
+export function unfinishedTasksPhrase(count: number): string {
+  return pluralCs(
+    count,
+    `zbývá ${count} nehotový úkol`,
+    `zbývají ${count} nehotové úkoly`,
+    `zbývá ${count} nehotových úkolů`,
+  );
+}
+
 /** Klient, u kterého se dlouho nic nedělo. Prahová hodnota je ve dnech. */
 export function isContactStale(
   value: Date | null | undefined,

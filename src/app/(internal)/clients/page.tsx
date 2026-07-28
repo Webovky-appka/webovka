@@ -3,7 +3,7 @@ import { ClientStatus, type Prisma } from "@prisma/client";
 
 import { PhaseBadge } from "@/components/phase-badge";
 import { requireUser } from "@/lib/auth";
-import { formatRelativeDays } from "@/lib/format";
+import { formatRelativeDays, pluralCs } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -66,7 +66,7 @@ export default async function ClientsPage(props: {
           <p className="text-sm text-slate-500">
             {clients.length === 0
               ? "Žádný klient neodpovídá filtru"
-              : `${clients.length} ${clients.length === 1 ? "klient" : clients.length < 5 ? "klienti" : "klientů"}`}
+              : `${clients.length} ${pluralCs(clients.length, "klient", "klienti", "klientů")}`}
           </p>
         </div>
 
