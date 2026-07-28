@@ -95,7 +95,6 @@ src/proxy.ts    Optimistické přesměrování nepřihlášených (dříve middl
 
 ## Nasazení
 
-Zamýšlený cíl je Vercel s hostovaným Postgresem (Neon nebo Supabase).
-Potřeba nastavit `DATABASE_URL`, `SESSION_SECRET`, `APP_URL` a pro přílohy
-`STORAGE_DRIVER=blob` s `BLOB_READ_WRITE_TOKEN`. Účty admina a vývojáře se
-v produkci zakládají samostatně, seed s vývojovými hesly tam nepatří.
+Postup je v [DEPLOYMENT.md](DEPLOYMENT.md) — Vercel pro aplikaci, Neon pro
+databázi, Vercel Blob pro přílohy a Resend pro e-maily. Účty admina a vývojáře
+se v produkci zakládají samostatně, seed s vývojovými hesly tam nepatří.
