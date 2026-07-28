@@ -78,5 +78,10 @@ export async function deleteFile(storageKey: string): Promise<void> {
     return;
   }
 
-  await fs.rm(path.join(LOCAL_ROOT, storageKey), { force: true });
+  const target = path.join(LOCAL_ROOT, storageKey);
+  await fs.rm(target, { force: true });
+
+  // Adresář je pojmenovaný podle id klienta, takže po výmazu nemá zůstat ani on.
+  // rmdir na neprázdném adresáři selže, což je přesně chtěné chování.
+  await fs.rmdir(path.dirname(target)).catch(() => {});
 }
