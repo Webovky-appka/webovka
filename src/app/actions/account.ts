@@ -2,30 +2,12 @@
 
 import argon2 from "argon2";
 import { revalidatePath } from "next/cache";
-import * as z from "zod";
 
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { PasswordChangeSchema } from "@/lib/validation";
 
 export type PasswordState = { error?: string; success?: string } | undefined;
-
-const PasswordSchema = z
-  .object({
-    currentPassword: z.string().min(1, "Zadejte současné heslo."),
-    newPassword: z
-      .string()
-      .min(10, "Nové heslo musí mít alespoň 10 znaků.")
-      .max(200, "Heslo je příliš dlouhé."),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    error: "Nové heslo a jeho potvrzení se neshodují.",
-    path: ["confirmPassword"],
-  })
-  .refine((data) => data.newPassword !== data.currentPassword, {
-    error: "Nové heslo se musí lišit od současného.",
-    path: ["newPassword"],
-  });
 
 export async function changePassword(
   _prevState: PasswordState,
@@ -33,7 +15,7 @@ export async function changePassword(
 ): Promise<PasswordState> {
   const sessionUser = await requireUser();
 
-  const parsed = PasswordSchema.safeParse({
+  const parsed = PasswordChangeSchema.safeParse({
     currentPassword: formData.get("currentPassword"),
     newPassword: formData.get("newPassword"),
     confirmPassword: formData.get("confirmPassword"),

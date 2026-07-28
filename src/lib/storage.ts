@@ -31,7 +31,7 @@ function driver(): "local" | "blob" {
  * Klíč v úložišti. Nikdy nepoužíváme jméno souboru od uživatele — mohlo by
  * obsahovat cestu nebo kolidovat s jiným souborem.
  */
-function buildKey(clientId: string, filename: string): string {
+export function buildStorageKey(clientId: string, filename: string): string {
   const extension = path.extname(filename).slice(0, 10).toLowerCase();
   const safeExtension = /^\.[a-z0-9]+$/.test(extension) ? extension : "";
   return `${clientId}/${crypto.randomUUID()}${safeExtension}`;
@@ -41,7 +41,7 @@ export async function saveFile(
   clientId: string,
   file: File,
 ): Promise<{ storageKey: string }> {
-  const storageKey = buildKey(clientId, file.name);
+  const storageKey = buildStorageKey(clientId, file.name);
   const bytes = Buffer.from(await file.arrayBuffer());
 
   if (driver() === "blob") {

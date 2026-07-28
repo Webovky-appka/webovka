@@ -71,6 +71,7 @@ zakládají zvlášť, s vlastními hesly.
 | `npm run build`      | Produkční build                          |
 | `npm run lint`       | ESLint                                   |
 | `npm run typecheck`  | Kontrola typů bez buildu                 |
+| `npm test`           | Testy (Vitest)                           |
 | `npm run db:up`      | Nastartuje Postgres v Dockeru            |
 | `npm run db:down`    | Zastaví Postgres                         |
 | `npm run db:migrate` | Vytvoří a aplikuje migraci               |

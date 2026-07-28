@@ -18,8 +18,15 @@ nejdřív dopište tam, ať je jasné, co je v rozsahu a co ne.
 ## Před odesláním pull requestu
 
 ```bash
-npm run lint && npm run typecheck && npm run build
+npm run lint && npm run typecheck && npm test && npm run build
 ```
+
+Totéž hlídá CI na každém pull requestu.
+
+Testy pokrývají záměrně jen logiku, jejíž rozbití se nepozná z aplikace:
+podpis session cookie, portálové tokeny a PIN, sanitizaci názvů nahrávaných
+souborů a validaci hesel. Přidávejte je tam, kde chyba tiše oslabí zabezpečení,
+ne pro pokrytí samo pro sebe.
 
 Když měníte schéma databáze, přiložte migraci — nikdy neupravujte migraci,
 která už je v `main`.
