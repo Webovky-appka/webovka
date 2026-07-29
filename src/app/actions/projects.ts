@@ -7,10 +7,20 @@ import * as z from "zod";
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
 import { notifyClientPhaseChanged } from "@/lib/notifications";
-import { PHASE_LABELS, PHASE_ORDER, activePhase } from "@/lib/phases";
+import { DEFAULT_PHASES, activePhase } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export type ProjectFormState = { error?: string } | undefined;
+
+const optionalUrl = z
+  .string()
+  .trim()
+  .transform((value) => (value === "" ? null : value))
+  .nullable()
+  .refine(
+    (value) => value === null || /^https?:\/\//.test(value),
+    "Odkaz musí začínat http:// nebo https://",
+  );
 
 const PortalSchema = z.object({
   portalNote: z
@@ -18,25 +28,72 @@ const PortalSchema = z.object({
     .trim()
     .transform((value) => (value === "" ? null : value))
     .nullable(),
-  previewUrl: z
-    .string()
-    .trim()
-    .transform((value) => (value === "" ? null : value))
-    .nullable()
-    .refine(
-      (value) => value === null || /^https?:\/\//.test(value),
-      "Odkaz na náhled musí začínat http:// nebo https://",
-    ),
-  dueDate: z
-    .string()
-    .trim()
-    .transform((value) => (value === "" ? null : new Date(value)))
-    .nullable()
-    .refine(
-      (value) => value === null || !Number.isNaN(value.getTime()),
-      "Neplatné datum.",
-    ),
+  currentSiteUrl: optionalUrl,
+  previewUrl: optionalUrl,
 });
+
+/**
+ * Fáze nové zakázky. Vezmou se z předlohy, a když žádná není, z výchozích
+ * názvů — zakázka nikdy nezůstane bez fází, protože bez nich nejde zadat úkol.
+ */
+async function phasesForNewProject() {
+  const templates = await prisma.phaseTemplate.findMany({
+    orderBy: { position: "asc" },
+    include: { tasks: { orderBy: { position: "asc" } } },
+  });
+
+  if (templates.length > 0) {
+    return templates.map((template, index) => ({
+      name: template.name,
+      position: index,
+      tasks: template.tasks.map((task, taskIndex) => ({
+        title: task.title,
+        position: taskIndex,
+      })),
+    }));
+  }
+
+  return DEFAULT_PHASES.map((phase, index) => ({
+    name: phase.name,
+    position: index,
+    tasks: phase.tasks.map((title, taskIndex) => ({
+      title,
+      position: taskIndex,
+    })),
+  }));
+}
+
+/** Vytvoří zakázku i s fázemi a úkoly. Používá to i zakládání klienta. */
+export async function createProjectWithPhases(
+  clientId: string,
+  name: string,
+): Promise<string> {
+  const phases = await phasesForNewProject();
+
+  const project = await prisma.project.create({
+    data: { clientId, name },
+    select: { id: true },
+  });
+
+  for (const phase of phases) {
+    await prisma.projectPhase.create({
+      data: {
+        projectId: project.id,
+        name: phase.name,
+        position: phase.position,
+        tasks: {
+          create: phase.tasks.map((task) => ({
+            projectId: project.id,
+            title: task.title,
+            position: task.position,
+          })),
+        },
+      },
+    });
+  }
+
+  return project.id;
+}
 
 export async function createProject(
   _prevState: ProjectFormState,
@@ -54,23 +111,7 @@ export async function createProject(
     return { error: "Zadejte název zakázky." };
   }
 
-  const templates = await prisma.taskTemplate.findMany({
-    orderBy: [{ phase: "asc" }, { position: "asc" }],
-  });
-
-  await prisma.project.create({
-    data: {
-      clientId,
-      name: name.trim(),
-      tasks: {
-        create: templates.map((template) => ({
-          title: template.title,
-          phase: template.phase,
-          position: template.position,
-        })),
-      },
-    },
-  });
+  await createProjectWithPhases(clientId, name.trim());
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/projects");
@@ -78,114 +119,181 @@ export async function createProject(
 }
 
 /**
- * Ukončí fázi. Tohle je jediná akce, která posouvá zakázku dál — přepínání
- * fází v UI je jen prohlížení a do komunikace se nezapisuje, protože by z ní
- * dělalo nepřehledný seznam přepnutí.
+ * Ukončí fázi. Jediná akce, která posouvá zakázku dál — přepínání fází v UI je
+ * jen prohlížení a do komunikace se nezapisuje.
  */
 export async function completePhase(formData: FormData) {
   const user = await requireUser();
 
-  const projectId = formData.get("projectId");
-  const target = formData.get("phase");
+  const phaseId = formData.get("phaseId");
+  if (typeof phaseId !== "string") return;
 
-  if (typeof projectId !== "string") return;
-  const phase = PHASE_ORDER.find((value) => value === target);
-  if (!phase) return;
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      clientId: true,
-      name: true,
-      portalNote: true,
-      client: { select: { email: true } },
-      phaseCompletions: { select: { phase: true } },
+  const phase = await prisma.projectPhase.findUnique({
+    where: { id: phaseId },
+    include: {
+      project: {
+        select: {
+          id: true,
+          clientId: true,
+          name: true,
+          portalNote: true,
+          client: { select: { email: true } },
+          phases: {
+            select: { id: true, name: true, position: true, completedAt: true },
+          },
+        },
+      },
     },
   });
-  if (!project) return;
+  if (!phase || phase.completedAt !== null) return;
 
-  const alreadyCompleted = project.phaseCompletions.some(
-    (completion) => completion.phase === phase,
+  const completedAt = new Date();
+  await prisma.projectPhase.update({
+    where: { id: phaseId },
+    data: { completedAt, completedById: user.id },
+  });
+
+  const afterCompletion = phase.project.phases.map((item) =>
+    item.id === phaseId ? { ...item, completedAt } : item,
   );
-  if (alreadyCompleted) return;
-
-  const completedPhases = [
-    ...project.phaseCompletions.map((completion) => completion.phase),
-    phase,
-  ];
-  const nextPhase = activePhase(completedPhases);
-
-  await prisma.$transaction([
-    prisma.phaseCompletion.create({
-      data: { projectId, phase, userId: user.id },
-    }),
-    prisma.project.update({
-      where: { id: projectId },
-      data: { phase: nextPhase },
-    }),
-  ]);
+  const next = activePhase(afterCompletion);
+  const finished = next === null || next.id === phaseId;
 
   await logSystemEvent({
-    clientId: project.clientId,
-    projectId,
-    body:
-      nextPhase === phase
-        ? `${user.name} ukončil fázi „${PHASE_LABELS[phase]}“. Zakázka je hotová.`
-        : `${user.name} ukončil fázi „${PHASE_LABELS[phase]}“. Zakázka pokračuje fází „${PHASE_LABELS[nextPhase]}“.`,
+    clientId: phase.project.clientId,
+    projectId: phase.project.id,
+    body: finished
+      ? `${user.name} ukončil fázi „${phase.name}“. Zakázka je hotová.`
+      : `${user.name} ukončil fázi „${phase.name}“. Zakázka pokračuje fází „${next.name}“.`,
   });
 
-  await notifyClientPhaseChanged({
-    clientEmail: project.client.email,
-    projectName: project.name,
-    phase: nextPhase,
-    portalNote: project.portalNote,
-  });
+  if (!finished) {
+    await notifyClientPhaseChanged({
+      clientEmail: phase.project.client.email,
+      projectName: phase.project.name,
+      phaseName: next.name,
+      portalNote: phase.project.portalNote,
+    });
+  }
 
-  revalidatePath(`/clients/${project.clientId}`);
+  revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
 }
 
-/** Vrátí ukončenou fázi zpět do práce, když se ukončila omylem nebo se něco vrátilo. */
+/** Vrátí ukončenou fázi zpět do práce. Klientovi se to neposílá, je to korekce. */
 export async function reopenPhase(formData: FormData) {
   const user = await requireUser();
 
-  const projectId = formData.get("projectId");
-  const target = formData.get("phase");
+  const phaseId = formData.get("phaseId");
+  if (typeof phaseId !== "string") return;
 
-  if (typeof projectId !== "string") return;
-  const phase = PHASE_ORDER.find((value) => value === target);
-  if (!phase) return;
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
+  const phase = await prisma.projectPhase.findUnique({
+    where: { id: phaseId },
     select: {
-      clientId: true,
-      phaseCompletions: { select: { phase: true } },
+      name: true,
+      project: { select: { id: true, clientId: true } },
     },
   });
-  if (!project) return;
+  if (!phase) return;
 
-  const remaining = project.phaseCompletions
-    .map((completion) => completion.phase)
-    .filter((value) => value !== phase);
-
-  await prisma.$transaction([
-    prisma.phaseCompletion.deleteMany({ where: { projectId, phase } }),
-    prisma.project.update({
-      where: { id: projectId },
-      data: { phase: activePhase(remaining) },
-    }),
-  ]);
-
-  // Klientovi se to neposílá, je to interní korekce, ne posun zakázky.
-  await logSystemEvent({
-    clientId: project.clientId,
-    projectId,
-    body: `${user.name} vrátil fázi „${PHASE_LABELS[phase]}“ zpět do práce.`,
+  await prisma.projectPhase.update({
+    where: { id: phaseId },
+    data: { completedAt: null, completedById: null },
   });
 
-  revalidatePath(`/clients/${project.clientId}`);
+  await logSystemEvent({
+    clientId: phase.project.clientId,
+    projectId: phase.project.id,
+    body: `${user.name} vrátil fázi „${phase.name}“ zpět do práce.`,
+  });
+
+  revalidatePath(`/clients/${phase.project.clientId}`);
+  revalidatePath("/projects");
+}
+
+export async function createPhase(formData: FormData) {
+  await requireUser();
+
+  const projectId = formData.get("projectId");
+  const name = formData.get("name");
+  if (typeof projectId !== "string" || typeof name !== "string") return;
+  if (name.trim() === "") return;
+
+  const last = await prisma.projectPhase.findFirst({
+    where: { projectId },
+    orderBy: { position: "desc" },
+    select: { position: true },
+  });
+
+  const created = await prisma.projectPhase.create({
+    data: {
+      projectId,
+      name: name.trim(),
+      position: (last?.position ?? -1) + 1,
+    },
+    select: { project: { select: { clientId: true } } },
+  });
+
+  revalidatePath(`/clients/${created.project.clientId}`);
+  revalidatePath("/projects");
+}
+
+export async function renamePhase(formData: FormData) {
+  await requireUser();
+
+  const phaseId = formData.get("phaseId");
+  const name = formData.get("name");
+  if (typeof phaseId !== "string" || typeof name !== "string") return;
+  if (name.trim() === "") return;
+
+  const phase = await prisma.projectPhase.update({
+    where: { id: phaseId },
+    data: { name: name.trim() },
+    select: { project: { select: { clientId: true } } },
+  });
+
+  revalidatePath(`/clients/${phase.project.clientId}`);
+  revalidatePath("/projects");
+}
+
+/**
+ * Smaže fázi i s jejími úkoly. Poslední fáze zůstat musí, jinak by zakázka
+ * neměla kam zadávat úkoly. Schválení klientem zůstane zachované, protože si
+ * nese název fáze v sobě.
+ */
+export async function deletePhase(formData: FormData) {
+  await requireUser();
+
+  const phaseId = formData.get("phaseId");
+  if (typeof phaseId !== "string") return;
+
+  const phase = await prisma.projectPhase.findUnique({
+    where: { id: phaseId },
+    select: { projectId: true, project: { select: { clientId: true } } },
+  });
+  if (!phase) return;
+
+  const count = await prisma.projectPhase.count({
+    where: { projectId: phase.projectId },
+  });
+  if (count <= 1) return;
+
+  await prisma.projectPhase.delete({ where: { id: phaseId } });
+
+  // Pozice srovnáme, aby v nich nezůstaly díry a šlo přidávat na konec.
+  const remaining = await prisma.projectPhase.findMany({
+    where: { projectId: phase.projectId },
+    orderBy: { position: "asc" },
+    select: { id: true },
+  });
+  for (const [index, item] of remaining.entries()) {
+    await prisma.projectPhase.update({
+      where: { id: item.id },
+      data: { position: index },
+    });
+  }
+
+  revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
 }
 
@@ -202,8 +310,8 @@ export async function updateProjectPortal(
 
   const parsed = PortalSchema.safeParse({
     portalNote: formData.get("portalNote"),
+    currentSiteUrl: formData.get("currentSiteUrl"),
     previewUrl: formData.get("previewUrl"),
-    dueDate: formData.get("dueDate"),
   });
 
   if (!parsed.success) {
@@ -218,6 +326,28 @@ export async function updateProjectPortal(
 
   revalidatePath(`/clients/${project.clientId}`);
   return undefined;
+}
+
+export async function updatePhaseDueDate(formData: FormData) {
+  await requireUser();
+
+  const phaseId = formData.get("phaseId");
+  const dueDate = formData.get("dueDate");
+  if (typeof phaseId !== "string") return;
+
+  let parsed: Date | null = null;
+  if (typeof dueDate === "string" && dueDate.trim() !== "") {
+    parsed = new Date(dueDate);
+    if (Number.isNaN(parsed.getTime())) return;
+  }
+
+  const phase = await prisma.projectPhase.update({
+    where: { id: phaseId },
+    data: { dueDate: parsed },
+    select: { project: { select: { clientId: true } } },
+  });
+
+  revalidatePath(`/clients/${phase.project.clientId}`);
 }
 
 export async function setProjectStatus(formData: FormData) {

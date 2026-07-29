@@ -1,19 +1,85 @@
-import { PrismaClient, Phase, ClientStatus, MessageKind, AuthorType, UserRole } from "@prisma/client";
+import {
+  PrismaClient,
+  ClientStatus,
+  MessageKind,
+  AuthorType,
+  UserRole,
+} from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";
 import "dotenv/config";
+
+import { DEFAULT_PHASES } from "../src/lib/phases";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
 });
 
-const TASK_TEMPLATE = [
-  { phase: Phase.BRIEF, titles: ["Podepsat smlouvu", "Získat podklady od klienta", "Získat přístupy k doméně", "Sepsat zadání a odsouhlasit rozsah"] },
-  { phase: Phase.DESIGN, titles: ["Navrhnout strukturu stránek", "Připravit grafický návrh homepage", "Odeslat návrh klientovi ke schválení"] },
-  { phase: Phase.BUILD, titles: ["Nasadit vývojové prostředí", "Naprogramovat šablony", "Naplnit obsahem", "Nastavit responzivitu a rychlost"] },
-  { phase: Phase.REVIEW, titles: ["Projít web s klientem", "Zapracovat připomínky", "Zkontrolovat texty a odkazy"] },
-  { phase: Phase.LIVE, titles: ["Převést doménu na produkci", "Nastavit zálohy a monitoring", "Předat přístupy klientovi", "Vystavit koncovou fakturu"] },
-];
+/** Kolik fází od začátku je u ukázkové zakázky hotových. */
+type DemoProject = {
+  name: string;
+  completedPhases: number;
+  portalNote?: string;
+  currentSiteUrl?: string;
+  previewUrl?: string;
+};
+
+async function seedTemplate() {
+  // Předloha je globální, proto ji přepisujeme celou.
+  await prisma.phaseTemplate.deleteMany();
+
+  for (const [index, phase] of DEFAULT_PHASES.entries()) {
+    await prisma.phaseTemplate.create({
+      data: {
+        name: phase.name,
+        position: index,
+        tasks: {
+          create: phase.tasks.map((title, taskIndex) => ({
+            title,
+            position: taskIndex,
+          })),
+        },
+      },
+    });
+  }
+}
+
+async function createDemoProject(clientId: string, demo: DemoProject) {
+  const project = await prisma.project.create({
+    data: {
+      clientId,
+      name: demo.name,
+      portalNote: demo.portalNote,
+      currentSiteUrl: demo.currentSiteUrl,
+      previewUrl: demo.previewUrl,
+    },
+    select: { id: true },
+  });
+
+  for (const [index, phase] of DEFAULT_PHASES.entries()) {
+    const isCompleted = index < demo.completedPhases;
+
+    await prisma.projectPhase.create({
+      data: {
+        projectId: project.id,
+        name: phase.name,
+        position: index,
+        completedAt: isCompleted ? new Date() : null,
+        tasks: {
+          create: phase.tasks.map((title, taskIndex) => ({
+            projectId: project.id,
+            title,
+            position: taskIndex,
+            // Úkoly hotových fází jsou odškrtané, jinak by zakázka nedávala smysl.
+            done: isCompleted,
+          })),
+        },
+      },
+    });
+  }
+
+  return project.id;
+}
 
 async function main() {
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@web-appka.local";
@@ -43,17 +109,7 @@ async function main() {
     },
   });
 
-  // Šablona úkolů je globální, proto ji přepisujeme celou.
-  await prisma.taskTemplate.deleteMany();
-  for (const group of TASK_TEMPLATE) {
-    await prisma.taskTemplate.createMany({
-      data: group.titles.map((title, position) => ({
-        title,
-        phase: group.phase,
-        position,
-      })),
-    });
-  }
+  await seedTemplate();
 
   const existingClients = await prisma.client.count();
   if (existingClients === 0) {
@@ -64,18 +120,18 @@ async function main() {
         email: "jana@pekarnaunovaku.cz",
         phone: "+420 601 234 567",
         status: ClientStatus.ACTIVE,
-        internalNote: "Platí spolehlivě, ale podklady dodává pozdě. Připomínat týden dopředu.",
-        projects: {
-          create: {
-            name: "Nový web pekárny",
-            phase: Phase.DESIGN,
-            portalNote:
-              "Připravili jsme grafický návrh homepage. Prosíme o schválení, nebo o připomínky, ať můžeme začít programovat.",
-            previewUrl: "https://navrh.pekarnaunovaku.cz",
-          },
-        },
+        internalNote:
+          "Platí spolehlivě, ale podklady dodává pozdě. Připomínat týden dopředu.",
       },
-      include: { projects: true },
+    });
+
+    const pekarnaProject = await createDemoProject(pekarna.id, {
+      name: "Nový web pekárny",
+      completedPhases: 2,
+      portalNote:
+        "Připravili jsme grafický návrh homepage. Prosíme o schválení, nebo o připomínky, ať můžeme začít programovat.",
+      currentSiteUrl: "https://pekarnaunovaku.cz",
+      previewUrl: "https://navrh.pekarnaunovaku.cz",
     });
 
     const truhlarstvi = await prisma.client.create({
@@ -85,52 +141,22 @@ async function main() {
         email: "info@truhlarstvidvorak.cz",
         phone: "+420 774 111 222",
         status: ClientStatus.ACTIVE,
-        projects: {
-          create: {
-            name: "Prezentační web a fotogalerie",
-            phase: Phase.BUILD,
-            portalNote: "Programujeme fotogalerii. Do konce týdne pošleme odkaz na testovací verzi.",
-          },
-        },
       },
-      include: { projects: true },
     });
 
-    for (const project of [...pekarna.projects, ...truhlarstvi.projects]) {
-      const templates = await prisma.taskTemplate.findMany({
-        orderBy: [{ phase: "asc" }, { position: "asc" }],
-      });
-
-      await prisma.task.createMany({
-        data: templates.map((template) => ({
-          projectId: project.id,
-          title: template.title,
-          phase: template.phase,
-          position: template.position,
-          // Úkoly z již proběhlých fází označíme jako hotové.
-          done: phaseRank(template.phase) < phaseRank(project.phase),
-        })),
-      });
-
-      // Fáze před aktuální jsou ukončené, jinak by se zakázka tvářila jako na začátku.
-      const finishedPhases = [
-        Phase.BRIEF,
-        Phase.DESIGN,
-        Phase.BUILD,
-        Phase.REVIEW,
-        Phase.LIVE,
-      ].filter((phase) => phaseRank(phase) < phaseRank(project.phase));
-
-      await prisma.phaseCompletion.createMany({
-        data: finishedPhases.map((phase) => ({ projectId: project.id, phase })),
-      });
-    }
+    const truhlarstviProject = await createDemoProject(truhlarstvi.id, {
+      name: "Prezentační web a fotogalerie",
+      completedPhases: 2,
+      portalNote:
+        "Programujeme fotogalerii. Do konce týdne pošleme odkaz na testovací verzi.",
+      currentSiteUrl: "https://truhlarstvidvorak.cz",
+    });
 
     await prisma.message.createMany({
       data: [
         {
           clientId: pekarna.id,
-          projectId: pekarna.projects[0].id,
+          projectId: pekarnaProject,
           authorType: AuthorType.USER,
           authorId: admin.id,
           kind: MessageKind.CALL,
@@ -138,7 +164,7 @@ async function main() {
         },
         {
           clientId: pekarna.id,
-          projectId: pekarna.projects[0].id,
+          projectId: pekarnaProject,
           authorType: AuthorType.USER,
           authorId: admin.id,
           kind: MessageKind.EMAIL,
@@ -146,7 +172,7 @@ async function main() {
         },
         {
           clientId: truhlarstvi.id,
-          projectId: truhlarstvi.projects[0].id,
+          projectId: truhlarstviProject,
           authorType: AuthorType.USER,
           authorId: admin.id,
           kind: MessageKind.NOTE,
@@ -159,10 +185,6 @@ async function main() {
   console.log("Seed hotový.");
   console.log(`  Admin:    ${adminEmail} / ${adminPassword}`);
   console.log(`  Vývojář:  ${devEmail} / ${devPassword}`);
-}
-
-function phaseRank(phase: Phase): number {
-  return [Phase.BRIEF, Phase.DESIGN, Phase.BUILD, Phase.REVIEW, Phase.LIVE].indexOf(phase);
 }
 
 main()

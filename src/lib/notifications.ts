@@ -1,26 +1,23 @@
 import "server-only";
 
-import type { Phase } from "@prisma/client";
-
 import { appUrl, notificationRecipients, sendMail } from "@/lib/mail";
-import { PHASE_LABELS } from "@/lib/phases";
 
 export async function notifyPhaseApproved({
   clientId,
   companyName,
   projectName,
-  phase,
+  phaseName,
 }: {
   clientId: string;
   companyName: string;
   projectName: string;
-  phase: Phase;
+  phaseName: string;
 }): Promise<void> {
   await sendMail({
     to: await notificationRecipients(),
-    subject: `${companyName} schválil fázi ${PHASE_LABELS[phase]}`,
+    subject: `${companyName} schválil fázi ${phaseName}`,
     text: [
-      `Klient ${companyName} schválil fázi „${PHASE_LABELS[phase]}“ u zakázky ${projectName}.`,
+      `Klient ${companyName} schválil fázi „${phaseName}“ u zakázky ${projectName}.`,
       "",
       `Detail klienta: ${appUrl(`/clients/${clientId}`)}`,
     ].join("\n"),
@@ -59,12 +56,12 @@ export async function notifyPortalFeedback({
 export async function notifyClientPhaseChanged({
   clientEmail,
   projectName,
-  phase,
+  phaseName,
   portalNote,
 }: {
   clientEmail: string | null;
   projectName: string;
-  phase: Phase;
+  phaseName: string;
   portalNote: string | null;
 }): Promise<void> {
   if (!clientEmail) return;
@@ -73,11 +70,11 @@ export async function notifyClientPhaseChanged({
 
   await sendMail({
     to: clientEmail,
-    subject: `${projectName}: fáze ${PHASE_LABELS[phase]}`,
+    subject: `${projectName}: fáze ${phaseName}`,
     text: [
       "Dobrý den,",
       "",
-      `zakázka ${projectName} se posunula do fáze „${PHASE_LABELS[phase]}“.`,
+      `zakázka ${projectName} se posunula do fáze „${phaseName}“.`,
       ...(portalNote ? ["", portalNote] : []),
       "",
       "Podrobnosti najdete ve svém projektovém odkazu, který jste od nás dostali.",

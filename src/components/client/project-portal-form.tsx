@@ -11,13 +11,13 @@ import { Field, FormError, TextareaField } from "@/components/field";
 export function ProjectPortalForm({
   projectId,
   portalNote,
+  currentSiteUrl,
   previewUrl,
-  dueDate,
 }: {
   projectId: string;
   portalNote: string | null;
+  currentSiteUrl: string | null;
   previewUrl: string | null;
-  dueDate: Date | null;
 }) {
   const [state, formAction, pending] = useActionState<
     ProjectFormState,
@@ -38,17 +38,18 @@ export function ProjectPortalForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
-          label="Odkaz na náhled webu"
+          label="Stávající web klienta"
+          name="currentSiteUrl"
+          defaultValue={currentSiteUrl}
+          placeholder="https://"
+          hint="Web, který předěláváme."
+        />
+        <Field
+          label="Náš nový web"
           name="previewUrl"
           defaultValue={previewUrl}
           placeholder="https://"
-        />
-        <Field
-          label="Očekávaný termín fáze"
-          name="dueDate"
-          type="date"
-          defaultValue={dueDate ? dueDate.toISOString().slice(0, 10) : ""}
-          hint="Prázdné = klientovi se termín nezobrazí."
+          hint="Testovací verze nebo už spuštěný web."
         />
       </div>
 

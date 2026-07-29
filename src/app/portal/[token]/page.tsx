@@ -3,6 +3,7 @@ import { AuthorType, MessageKind } from "@prisma/client";
 
 import { PinGate } from "@/components/portal/pin-gate";
 import { PortalView } from "@/components/portal/portal-view";
+import { activePhase, sortPhases } from "@/lib/phases";
 import { hashPortalToken, isLinkUsable } from "@/lib/portal";
 import { prisma } from "@/lib/prisma";
 import { portalCookieName, verifyToken } from "@/lib/session";
@@ -23,6 +24,7 @@ export default async function PortalPage(props: {
       project: {
         include: {
           client: { select: { companyName: true } },
+          phases: { orderBy: { position: "asc" } },
         },
       },
     },
@@ -44,11 +46,13 @@ export default async function PortalPage(props: {
     );
   }
 
+  const current = activePhase(sortPhases(link.project.phases));
+
   const [approvals, feedback, files] = await Promise.all([
     prisma.approval.findMany({
       where: { projectId: link.projectId },
       orderBy: { createdAt: "desc" },
-      select: { id: true, phase: true, createdAt: true },
+      select: { id: true, phaseName: true, createdAt: true },
     }),
     prisma.message.findMany({
       where: {
@@ -73,12 +77,14 @@ export default async function PortalPage(props: {
           token,
           companyName: link.project.client.companyName,
           projectName: link.project.name,
-          phase: link.project.phase,
+          phases: link.project.phases,
+          currentPhaseName: current?.name ?? null,
+          currentPhaseDueDate: current?.dueDate ?? null,
           portalNote: link.project.portalNote,
+          currentSiteUrl: link.project.currentSiteUrl,
           previewUrl: link.project.previewUrl,
-          dueDate: link.project.dueDate,
           currentPhaseApproved: approvals.some(
-            (approval) => approval.phase === link.project.phase,
+            (approval) => approval.phaseName === current?.name,
           ),
           approvals,
           feedback,

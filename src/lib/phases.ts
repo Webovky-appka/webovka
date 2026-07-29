@@ -1,59 +1,91 @@
-import { Phase } from "@prisma/client";
-
-export const PHASE_ORDER: Phase[] = [
-  Phase.BRIEF,
-  Phase.DESIGN,
-  Phase.BUILD,
-  Phase.REVIEW,
-  Phase.LIVE,
+/**
+ * Fáze si pojmenovává uživatel u každé zakázky zvlášť, takže tady nezůstal
+ * žádný pevný výčet. Následující názvy slouží jen jako výchozí předloha,
+ * kterou seed vloží do PhaseTemplate a odkud se předvyplní nová zakázka.
+ */
+export const DEFAULT_PHASES: { name: string; tasks: string[] }[] = [
+  {
+    name: "Zadání",
+    tasks: [
+      "Podepsat smlouvu",
+      "Získat podklady od klienta",
+      "Získat přístupy k doméně",
+      "Sepsat zadání a odsouhlasit rozsah",
+    ],
+  },
+  {
+    name: "Návrh",
+    tasks: [
+      "Navrhnout strukturu stránek",
+      "Připravit grafický návrh homepage",
+      "Odeslat návrh klientovi ke schválení",
+    ],
+  },
+  {
+    name: "Vývoj",
+    tasks: [
+      "Nasadit vývojové prostředí",
+      "Naprogramovat šablony",
+      "Naplnit obsahem",
+      "Nastavit responzivitu a rychlost",
+    ],
+  },
+  {
+    name: "Schválení",
+    tasks: [
+      "Projít web s klientem",
+      "Zapracovat připomínky",
+      "Zkontrolovat texty a odkazy",
+    ],
+  },
+  {
+    name: "Live",
+    tasks: [
+      "Převést doménu na produkci",
+      "Nastavit zálohy a monitoring",
+      "Předat přístupy klientovi",
+      "Vystavit koncovou fakturu",
+    ],
+  },
 ];
 
-export const PHASE_LABELS: Record<Phase, string> = {
-  BRIEF: "Zadání",
-  DESIGN: "Návrh",
-  BUILD: "Vývoj",
-  REVIEW: "Schválení",
-  LIVE: "Live",
+/** Minimální podoba fáze, se kterou pracují pomocné funkce i komponenty. */
+export type PhaseLike = {
+  id: string;
+  name: string;
+  position: number;
+  completedAt: Date | null;
 };
 
-/// Barvy odpovídají pořadí fází, aby šel stav poznat na první pohled.
-export const PHASE_BADGE_CLASSES: Record<Phase, string> = {
-  BRIEF: "bg-slate-100 text-slate-700 ring-slate-200",
-  DESIGN: "bg-violet-100 text-violet-700 ring-violet-200",
-  BUILD: "bg-amber-100 text-amber-800 ring-amber-200",
-  REVIEW: "bg-sky-100 text-sky-700 ring-sky-200",
-  LIVE: "bg-emerald-100 text-emerald-700 ring-emerald-200",
-};
-
-export function phaseIndex(phase: Phase): number {
-  return PHASE_ORDER.indexOf(phase);
+export function sortPhases<T extends { position: number }>(phases: T[]): T[] {
+  return [...phases].sort((a, b) => a.position - b.position);
 }
 
 /**
- * Aktivní fáze je první neukončená. Přepínání fází v UI je jen prohlížení,
- * takže stav zakázky se odvozuje z toho, co je ukončené — ne z toho, na co se
- * kdo právě kouká.
+ * Aktivní fáze je první neukončená. Když je hotové všechno, zůstane poslední —
+ * zakázka se tím tváří jako dokončená, ne jako bez fáze.
  */
-export function activePhase(completedPhases: Phase[]): Phase {
-  const firstOpen = PHASE_ORDER.find(
-    (phase) => !completedPhases.includes(phase),
+export function activePhase<T extends PhaseLike>(phases: T[]): T | null {
+  const ordered = sortPhases(phases);
+  return (
+    ordered.find((phase) => phase.completedAt === null) ??
+    ordered[ordered.length - 1] ??
+    null
   );
-  // Když je hotové všechno, zakázka zůstane na Live.
-  return firstOpen ?? PHASE_ORDER[PHASE_ORDER.length - 1];
 }
 
-export function isPhaseCompleted(
-  phase: Phase,
-  completedPhases: Phase[],
-): boolean {
-  return completedPhases.includes(phase);
+export function isPhaseCompleted(phase: PhaseLike): boolean {
+  return phase.completedAt !== null;
 }
 
-export function nextPhase(phase: Phase): Phase | null {
-  return PHASE_ORDER[phaseIndex(phase) + 1] ?? null;
-}
-
-export function previousPhase(phase: Phase): Phase | null {
-  const index = phaseIndex(phase);
-  return index > 0 ? PHASE_ORDER[index - 1] : null;
+/** Barvy podle stavu, ne podle názvu — názvy si uživatel vymýšlí sám. */
+export function phaseBadgeClasses(state: "done" | "active" | "future"): string {
+  switch (state) {
+    case "done":
+      return "bg-emerald-100 text-emerald-700 ring-emerald-200";
+    case "active":
+      return "bg-sky-100 text-sky-700 ring-sky-200";
+    default:
+      return "bg-slate-100 text-slate-600 ring-slate-200";
+  }
 }

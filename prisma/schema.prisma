@@ -11,15 +11,6 @@ enum UserRole {
   DEVELOPER
 }
 
-/// Fáze zakázky. Pořadí odpovídá průchodu zakázky.
-enum Phase {
-  BRIEF
-  DESIGN
-  BUILD
-  REVIEW
-  LIVE
-}
-
 enum ClientStatus {
   LEAD
   ACTIVE
@@ -66,9 +57,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  messages         Message[]
-  phaseCompletions PhaseCompletion[]
-  attachments      Attachment[]
+  messages       Message[]
+  phasesFinished ProjectPhase[]
+  attachments    Attachment[]
 }
 
 model Client {
@@ -98,50 +89,61 @@ model Project {
   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   name   String
-  phase  Phase         @default(BRIEF)
   status ProjectStatus @default(ACTIVE)
 
   /// Text viditelný klientem v portálu — co se právě děje, co je potřeba od klienta.
-  portalNote String?
-  /// Odkaz na staging nebo náhled webu, zobrazuje se v portálu.
-  previewUrl String?
-  /// Očekávaný termín aktuální fáze. Prázdné = v portálu se nezobrazuje.
-  dueDate    DateTime?
+  portalNote     String?
+  /// Web, který pro klienta předěláváme. Jeho stávající, ještě neupravený.
+  currentSiteUrl String?
+  /// Náš nový web — staging nebo už spuštěná verze.
+  previewUrl     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks            Task[]
-  messages         Message[]
-  phaseCompletions PhaseCompletion[]
-  approvals        Approval[]
-  portalLinks      PortalLink[]
-  attachments      Attachment[]
+  phases      ProjectPhase[]
+  tasks       Task[]
+  messages    Message[]
+  approvals   Approval[]
+  portalLinks PortalLink[]
+  attachments Attachment[]
 
   @@index([clientId])
   @@index([status])
 }
 
-/// Ukončená fáze zakázky. Fáze se ukončují jednotlivě, protože přepínání mezi
-/// nimi je jen prohlížení — stav mění teprve ukončení.
-model PhaseCompletion {
+/// Fáze zakázky. Každá zakázka má vlastní seznam — jeden web zvládne tři fáze,
+/// e-shop jich potřebuje osm. Nová zakázka se předvyplní z PhaseTemplate.
+model ProjectPhase {
   id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  phase       Phase
-  completedAt DateTime @default(now())
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name     String
+  position Int
 
-  @@unique([projectId, phase])
-  @@index([projectId])
+  /// Vyplněné = fáze je ukončená. Aktivní fáze je první neukončená.
+  completedAt   DateTime?
+  completedById String?
+  completedBy   User?     @relation(fields: [completedById], references: [id], onDelete: SetNull)
+
+  /// Očekávaný termín fáze. Prázdné = v portálu se nezobrazuje.
+  dueDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks     Task[]
+  approvals Approval[]
+
+  @@unique([projectId, position])
+  @@index([projectId, position])
 }
 
 model Message {
-  id       String  @id @default(cuid())
-  clientId String
-  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   /// Vazba na konkrétní zakázku. Prázdné = obecná komunikace s klientem.
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -161,13 +163,14 @@ model Message {
 }
 
 model Task {
-  id        String  @id @default(cuid())
+  id        String       @id @default(cuid())
   projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phaseId   String
+  phase     ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
 
   title       String
   description String?
-  phase       Phase
   done        Boolean   @default(false)
   doneAt      DateTime?
   dueDate     DateTime?
@@ -175,17 +178,31 @@ model Task {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  @@index([projectId, phase, position])
+  attachments Attachment[]
+
+  @@index([phaseId, position])
+  @@index([projectId])
 }
 
-/// Šablona úkolů. Kopíruje se do Task při zakládání nové zakázky.
-model TaskTemplate {
+/// Předloha fází pro nové zakázky. Úpravy se do rozjetých zakázek nepropisují.
+model PhaseTemplate {
   id       String @id @default(cuid())
+  name     String
+  position Int    @unique
+
+  tasks TaskTemplate[]
+}
+
+/// Předloha úkolů jedné fáze. Kopíruje se do Task při zakládání zakázky.
+model TaskTemplate {
+  id              String        @id @default(cuid())
+  phaseTemplateId String
+  phaseTemplate   PhaseTemplate @relation(fields: [phaseTemplateId], references: [id], onDelete: Cascade)
+
   title    String
-  phase    Phase
   position Int    @default(0)
 
-  @@index([phase, position])
+  @@index([phaseTemplateId, position])
 }
 
 /// Schválení fáze klientem. Oddělené od Message, protože musí být dohledatelné.
@@ -194,7 +211,11 @@ model Approval {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  phase        Phase
+  phaseId   String?
+  phase     ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  /// Název fáze v okamžiku schválení. Zůstane i po přejmenování nebo smazání fáze.
+  phaseName String
+
   /// IP adresa, ze které klient schválil. Slouží jako doklad.
   ipAddress    String?
   portalLinkId String?
@@ -216,7 +237,7 @@ model PortalLink {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   /// SHA-256 hash tokenu z URL. Deterministický, aby šel dohledat podle odkazu.
-  tokenHash String  @unique
+  tokenHash String @unique
   /// Argon2 hash PIN kódu. PIN se v čitelné podobě nikde neukládá.
   pinHash   String
 
@@ -232,25 +253,30 @@ model PortalLink {
 }
 
 model Attachment {
-  id       String  @id @default(cuid())
-  clientId String
-  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   projectId String?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  filename String
-  kind     AttachmentKind @default(OTHER)
-  mimeType String
-  size     Int
+  /// Soubor u konkrétního úkolu, například fotka nebo podklad.
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  filename        String
+  kind            AttachmentKind @default(OTHER)
+  mimeType        String
+  size            Int
   /// Cesta v úložišti. Nikdy se nevydává klientovi přímo.
-  storageKey String
+  storageKey      String
   /// Zpřístupněno klientovi v portálu.
-  visibleInPortal Boolean @default(false)
+  visibleInPortal Boolean        @default(false)
 
   uploadedById String?
-  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
 
   @@index([clientId, createdAt])
   @@index([projectId])
+  @@index([taskId])
 }

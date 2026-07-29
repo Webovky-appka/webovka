@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Phase, ProjectStatus, type Prisma } from "@prisma/client";
+import { ProjectStatus, type Prisma } from "@prisma/client";
 
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
 import { formatRelativeDays, isContactStale, pluralCs } from "@/lib/format";
-import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
+import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -14,21 +14,15 @@ export const metadata = {
 
 type SearchParams = {
   q?: string;
-  phase?: string;
   status?: string;
 };
-
-function parsePhase(value: string | undefined): Phase | undefined {
-  return PHASE_ORDER.find((phase) => phase === value);
-}
 
 export default async function ProjectsPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
   await requireUser();
-  const { q, phase, status } = await props.searchParams;
+  const { q, status } = await props.searchParams;
 
-  const phaseFilter = parsePhase(phase);
   // Archivované zakázky se ukazují jen na výslovné vyžádání.
   const statusFilter =
     status === "all"
@@ -40,7 +34,6 @@ export default async function ProjectsPage(props: {
           : ProjectStatus.ACTIVE;
 
   const where: Prisma.ProjectWhereInput = {
-    ...(phaseFilter ? { phase: phaseFilter } : {}),
     ...(statusFilter ? { status: statusFilter } : {}),
     ...(q
       ? {
@@ -69,6 +62,10 @@ export default async function ProjectsPage(props: {
             select: { createdAt: true },
           },
         },
+      },
+      phases: {
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, position: true, completedAt: true },
       },
       tasks: { select: { done: true } },
     },
@@ -116,19 +113,6 @@ export default async function ProjectsPage(props: {
         />
 
         <select
-          name="phase"
-          defaultValue={phase ?? ""}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
-        >
-          <option value="">Všechny fáze</option>
-          {PHASE_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {PHASE_LABELS[value]}
-            </option>
-          ))}
-        </select>
-
-        <select
           name="status"
           defaultValue={status ?? "active"}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
@@ -148,7 +132,7 @@ export default async function ProjectsPage(props: {
       </form>
 
       {projects.length === 0 ? (
-        <EmptyState hasFilter={Boolean(q || phase || status)} />
+        <EmptyState hasFilter={Boolean(q || status)} />
       ) : (
         <ul className="space-y-2">
           {projects.map((project) => {
@@ -156,6 +140,7 @@ export default async function ProjectsPage(props: {
             const done = project.tasks.filter((task) => task.done).length;
             const lastContact = project.client.messages[0]?.createdAt ?? null;
             const stale = isContactStale(lastContact);
+            const current = activePhase(sortPhases(project.phases));
 
             return (
               <li key={project.id}>
@@ -175,7 +160,7 @@ export default async function ProjectsPage(props: {
                           : ""}
                       </p>
                     </div>
-                    <PhaseBadge phase={project.phase} />
+                    {current ? <PhaseBadge name={current.name} /> : null}
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">

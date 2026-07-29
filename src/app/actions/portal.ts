@@ -13,7 +13,7 @@ import {
   notifyPhaseApproved,
   notifyPortalFeedback,
 } from "@/lib/notifications";
-import { PHASE_LABELS } from "@/lib/phases";
+import { activePhase } from "@/lib/phases";
 import {
   MAX_PIN_ATTEMPTS,
   PIN_LOCK_MINUTES,
@@ -220,10 +220,12 @@ async function loadPortalLink(token: string) {
           id: true,
           clientId: true,
           name: true,
-          phase: true,
           portalNote: true,
           previewUrl: true,
           client: { select: { companyName: true } },
+          phases: {
+            select: { id: true, name: true, position: true, completedAt: true },
+          },
         },
       },
     },
@@ -253,8 +255,11 @@ export async function approvePhase(
     return { error: "Zadejte prosím znovu PIN." };
   }
 
+  const phase = activePhase(link.project.phases);
+  if (!phase) return { error: "Zakázka nemá žádnou fázi ke schválení." };
+
   const alreadyApproved = await prisma.approval.findFirst({
-    where: { projectId: link.projectId, phase: link.project.phase },
+    where: { projectId: link.projectId, phaseId: phase.id },
   });
   if (alreadyApproved) {
     return { error: "Tuto fázi jste už schválili." };
@@ -263,7 +268,9 @@ export async function approvePhase(
   await prisma.approval.create({
     data: {
       projectId: link.projectId,
-      phase: link.project.phase,
+      phaseId: phase.id,
+      // Název si nese s sebou, aby doklad přežil přejmenování i smazání fáze.
+      phaseName: phase.name,
       ipAddress: await clientIpAddress(),
       portalLinkId: link.id,
       // Zmrazíme, co měl klient před sebou. Pozdější úprava poznámky ani
@@ -276,14 +283,14 @@ export async function approvePhase(
   await logSystemEvent({
     clientId: link.project.clientId,
     projectId: link.projectId,
-    body: `Klient schválil fázi „${PHASE_LABELS[link.project.phase]}“ v portálu.`,
+    body: `Klient schválil fázi „${phase.name}“ v portálu.`,
   });
 
   await notifyPhaseApproved({
     clientId: link.project.clientId,
     companyName: link.project.client.companyName,
     projectName: link.project.name,
-    phase: link.project.phase,
+    phaseName: phase.name,
   });
 
   revalidatePath(`/portal/${token}`);

@@ -1,32 +1,31 @@
-import type { Phase } from "@prisma/client";
 import Link from "next/link";
 
-import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
+import { sortPhases, type PhaseLike } from "@/lib/phases";
 
 /**
  * Přepínání fází je jen odkaz — mění, kterou fázi si zobrazujete, nic neukládá.
  * Stav zakázky mění až tlačítko Ukončit fázi v seznamu úkolů.
  */
 export function PhaseStepper({
-  viewedPhase,
-  activePhase,
-  completedPhases,
+  phases,
+  viewedPhaseId,
+  activePhaseId,
   unfinishedByPhase,
   phaseHref,
 }: {
-  viewedPhase: Phase;
-  activePhase: Phase;
-  completedPhases: Phase[];
-  unfinishedByPhase: Record<Phase, number>;
-  phaseHref: (phase: Phase) => string;
+  phases: PhaseLike[];
+  viewedPhaseId: string;
+  activePhaseId: string | null;
+  unfinishedByPhase: Record<string, number>;
+  phaseHref: (phaseId: string) => string;
 }) {
   return (
     <ol className="flex flex-wrap gap-1.5">
-      {PHASE_ORDER.map((phase) => {
-        const isCompleted = completedPhases.includes(phase);
-        const isViewed = phase === viewedPhase;
-        const isActive = phase === activePhase;
-        const remaining = unfinishedByPhase[phase] ?? 0;
+      {sortPhases(phases).map((phase) => {
+        const isCompleted = phase.completedAt !== null;
+        const isViewed = phase.id === viewedPhaseId;
+        const isActive = phase.id === activePhaseId;
+        const remaining = unfinishedByPhase[phase.id] ?? 0;
 
         const state = isCompleted
           ? "hotovo"
@@ -35,9 +34,9 @@ export function PhaseStepper({
             : `${remaining} zbývá`;
 
         return (
-          <li key={phase} className="flex-1 basis-32">
+          <li key={phase.id} className="min-w-28 flex-1">
             <Link
-              href={phaseHref(phase)}
+              href={phaseHref(phase.id)}
               aria-current={isViewed ? "step" : undefined}
               className={`block rounded-lg border px-2 py-2 transition ${
                 isCompleted
@@ -62,7 +61,7 @@ export function PhaseStepper({
                     <path d="M2.5 6.5l2.5 2.5 4.5-5" />
                   </svg>
                 ) : null}
-                {PHASE_LABELS[phase]}
+                <span className="truncate">{phase.name}</span>
               </span>
               <span
                 className={`mt-0.5 block text-[11px] ${
