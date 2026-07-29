@@ -31,7 +31,7 @@ function driver(): "local" | "blob" {
  * Klíč v úložišti. Nikdy nepoužíváme jméno souboru od uživatele — mohlo by
  * obsahovat cestu nebo kolidovat s jiným souborem.
  */
-function buildKey(clientId: string, filename: string): string {
+export function buildStorageKey(clientId: string, filename: string): string {
   const extension = path.extname(filename).slice(0, 10).toLowerCase();
   const safeExtension = /^\.[a-z0-9]+$/.test(extension) ? extension : "";
   return `${clientId}/${crypto.randomUUID()}${safeExtension}`;
@@ -41,7 +41,7 @@ export async function saveFile(
   clientId: string,
   file: File,
 ): Promise<{ storageKey: string }> {
-  const storageKey = buildKey(clientId, file.name);
+  const storageKey = buildStorageKey(clientId, file.name);
   const bytes = Buffer.from(await file.arrayBuffer());
 
   if (driver() === "blob") {
@@ -78,5 +78,10 @@ export async function deleteFile(storageKey: string): Promise<void> {
     return;
   }
 
-  await fs.rm(path.join(LOCAL_ROOT, storageKey), { force: true });
+  const target = path.join(LOCAL_ROOT, storageKey);
+  await fs.rm(target, { force: true });
+
+  // Adresář je pojmenovaný podle id klienta, takže po výmazu nemá zůstat ani on.
+  // rmdir na neprázdném adresáři selže, což je přesně chtěné chování.
+  await fs.rmdir(path.dirname(target)).catch(() => {});
 }

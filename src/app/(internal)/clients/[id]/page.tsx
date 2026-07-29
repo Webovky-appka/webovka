@@ -4,6 +4,7 @@ import { Phase, ProjectStatus } from "@prisma/client";
 
 import { setProjectStatus } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
+import { DeleteClientPanel } from "@/components/client/delete-client-panel";
 import { FilesPanel } from "@/components/client/files-panel";
 import { MessageForm } from "@/components/client/message-form";
 import { PhaseStepper } from "@/components/client/phase-stepper";
@@ -336,6 +337,12 @@ export default async function ClientDetailPage(props: {
                     ))}
                   </ul>
                 </section>
+
+                <DeleteClientPanel
+                  clientId={client.id}
+                  companyName={client.companyName}
+                  attachmentCount={files.length}
+                />
               </div>
             </div>
           ) : null}
