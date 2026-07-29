@@ -8,23 +8,23 @@ import { DeleteClientPanel } from "@/components/client/delete-client-panel";
 import { FilesPanel } from "@/components/client/files-panel";
 import { MessageEditPanel } from "@/components/client/message-edit-panel";
 import { MessageForm } from "@/components/client/message-form";
+import { NewProjectForm } from "@/components/client/new-project-form";
 import { PhaseStepper } from "@/components/client/phase-stepper";
+import { PhaseTasks } from "@/components/client/phase-tasks";
+import { PortalLinkPanel } from "@/components/client/portal-link-panel";
 import { ProjectPortalForm } from "@/components/client/project-portal-form";
-import { TaskBoard } from "@/components/client/task-board";
 import { TaskEditPanel } from "@/components/client/task-edit-panel";
 import { Timeline } from "@/components/client/timeline";
-import { NewProjectForm } from "@/components/client/new-project-form";
-import { PortalLinkPanel } from "@/components/client/portal-link-panel";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
 import { formatDay } from "@/lib/format";
-import { PHASE_ORDER } from "@/lib/phases";
+import { PHASE_ORDER, activePhase } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 const TABS = [
-  { key: "communication", label: "Komunikace" },
   { key: "tasks", label: "Úkoly" },
+  { key: "communication", label: "Komunikace" },
   { key: "files", label: "Soubory" },
   { key: "settings", label: "Nastavení" },
 ] as const;
@@ -54,6 +54,7 @@ export default async function ClientDetailPage(props: {
     tab?: string;
     task?: string;
     message?: string;
+    phase?: string;
   }>;
 }) {
   const user = await requireUser();
@@ -63,6 +64,7 @@ export default async function ClientDetailPage(props: {
     tab: tabParam,
     task: taskParam,
     message: messageParam,
+    phase: phaseParam,
   } = await props.searchParams;
 
   const client = await prisma.client.findUnique({
@@ -85,42 +87,53 @@ export default async function ClientDetailPage(props: {
 
   if (!client) notFound();
 
-  const activeTab: TabKey =
-    TABS.find((tab) => tab.key === tabParam)?.key ?? "communication";
+  const activeTab: TabKey = TABS.find((tab) => tab.key === tabParam)?.key ?? "tasks";
 
   const selectedProject =
     client.projects.find((p) => p.id === projectParam) ?? client.projects[0];
 
-  const [tasks, messages, approvals, portalLink, files] = selectedProject
-    ? await Promise.all([
-        prisma.task.findMany({ where: { projectId: selectedProject.id } }),
-        prisma.message.findMany({
-          where: { clientId: client.id },
-          orderBy: { createdAt: "desc" },
-          take: 100,
-          include: {
-            author: { select: { name: true } },
-            project: { select: { name: true } },
-          },
-        }),
-        prisma.approval.findMany({
-          where: { projectId: selectedProject.id },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.portalLink.findFirst({
-          where: { projectId: selectedProject.id, active: true },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.attachment.findMany({
-          where: { clientId: client.id },
-          orderBy: { createdAt: "desc" },
-          include: {
-            uploadedBy: { select: { name: true } },
-            project: { select: { id: true, name: true } },
-          },
-        }),
-      ])
-    : [[], [], [], null, []];
+  const [tasks, messages, approvals, portalLink, files, completions] =
+    selectedProject
+      ? await Promise.all([
+          prisma.task.findMany({ where: { projectId: selectedProject.id } }),
+          prisma.message.findMany({
+            where: { clientId: client.id },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+            include: {
+              author: { select: { name: true } },
+              project: { select: { name: true } },
+            },
+          }),
+          prisma.approval.findMany({
+            where: { projectId: selectedProject.id },
+            orderBy: { createdAt: "desc" },
+          }),
+          prisma.portalLink.findFirst({
+            where: { projectId: selectedProject.id, active: true },
+            orderBy: { createdAt: "desc" },
+          }),
+          prisma.attachment.findMany({
+            where: { clientId: client.id },
+            orderBy: { createdAt: "desc" },
+            include: {
+              uploadedBy: { select: { name: true } },
+              project: { select: { id: true, name: true } },
+            },
+          }),
+          prisma.phaseCompletion.findMany({
+            where: { projectId: selectedProject.id },
+            select: { phase: true },
+          }),
+        ])
+      : [[], [], [], null, [], []];
+
+  const completedPhases = completions.map((completion) => completion.phase);
+  const currentPhase = activePhase(completedPhases);
+
+  // Zobrazená fáze je jen věc URL — nepřepíná stav zakázky, jen co je vidět.
+  const viewedPhase =
+    PHASE_ORDER.find((phase) => phase === phaseParam) ?? currentPhase;
 
   const unfinishedByPhase = PHASE_ORDER.reduce(
     (acc, phase) => {
@@ -134,14 +147,21 @@ export default async function ClientDetailPage(props: {
 
   const doneCount = tasks.filter((task) => task.done).length;
 
-  function tabHref(tab: TabKey) {
+  function buildHref(overrides: {
+    tab?: TabKey;
+    phase?: Phase;
+    task?: string;
+    message?: string;
+  }) {
     const params = new URLSearchParams();
     if (selectedProject) params.set("project", selectedProject.id);
-    params.set("tab", tab);
+    params.set("tab", overrides.tab ?? activeTab);
+    params.set("phase", overrides.phase ?? viewedPhase);
+    if (overrides.task) params.set("task", overrides.task);
+    if (overrides.message) params.set("message", overrides.message);
     return `/clients/${client!.id}?${params.toString()}`;
   }
 
-  // Úkol i zápis se upravují v panelu, který se otevírá parametrem v URL.
   const editedTask = taskParam
     ? (tasks.find((task) => task.id === taskParam) ?? null)
     : null;
@@ -155,7 +175,7 @@ export default async function ClientDetailPage(props: {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <Link
           href="/projects"
@@ -175,7 +195,7 @@ export default async function ClientDetailPage(props: {
                 .join(" · ") || "Bez kontaktních údajů"}
             </p>
           </div>
-          {selectedProject ? <PhaseBadge phase={selectedProject.phase} /> : null}
+          {selectedProject ? <PhaseBadge phase={currentPhase} /> : null}
         </div>
       </div>
 
@@ -210,6 +230,49 @@ export default async function ClientDetailPage(props: {
             </nav>
           ) : null}
 
+          {/* Kontakt a portál jsou hned na začátku, ať je vidět všechno podstatné. */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="text-sm font-semibold text-slate-900">Klient</h2>
+              <ClientDetailForm client={client} />
+            </section>
+
+            <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+              <h2 className="text-sm font-semibold text-slate-900">
+                Klientský portál
+              </h2>
+              <ProjectPortalForm
+                projectId={selectedProject.id}
+                portalNote={selectedProject.portalNote}
+                previewUrl={selectedProject.previewUrl}
+                dueDate={selectedProject.dueDate}
+              />
+              <hr className="border-slate-100" />
+              <PortalLinkPanel
+                projectId={selectedProject.id}
+                previewHref={`/clients/${client.id}/preview?project=${selectedProject.id}`}
+                portalLink={
+                  portalLink
+                    ? {
+                        id: portalLink.id,
+                        expiresAt: portalLink.expiresAt,
+                        lastVisitedAt: portalLink.lastVisitedAt,
+                        createdAt: portalLink.createdAt,
+                      }
+                    : null
+                }
+                approvals={approvals.map((approval) => ({
+                  id: approval.id,
+                  phase: approval.phase,
+                  createdAt: approval.createdAt,
+                  ipAddress: approval.ipAddress,
+                  snapshotNote: approval.snapshotNote,
+                  snapshotPreviewUrl: approval.snapshotPreviewUrl,
+                }))}
+              />
+            </section>
+          </div>
+
           <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -233,9 +296,11 @@ export default async function ClientDetailPage(props: {
             </div>
 
             <PhaseStepper
-              projectId={selectedProject.id}
-              currentPhase={selectedProject.phase}
+              viewedPhase={viewedPhase}
+              activePhase={currentPhase}
+              completedPhases={completedPhases}
               unfinishedByPhase={unfinishedByPhase}
+              phaseHref={(phase) => buildHref({ tab: "tasks", phase })}
             />
           </section>
 
@@ -243,7 +308,7 @@ export default async function ClientDetailPage(props: {
             {TABS.map((tab) => (
               <Link
                 key={tab.key}
-                href={tabHref(tab.key)}
+                href={buildHref({ tab: tab.key })}
                 className={`-mb-px border-b-2 px-3 py-2 text-sm transition ${
                   tab.key === activeTab
                     ? "border-slate-900 font-medium text-slate-900"
@@ -255,12 +320,27 @@ export default async function ClientDetailPage(props: {
             ))}
           </nav>
 
+          {activeTab === "tasks" ? (
+            <div className="space-y-4">
+              {editedTask ? (
+                <TaskEditPanel task={editedTask} closeHref={buildHref({})} />
+              ) : null}
+              <PhaseTasks
+                projectId={selectedProject.id}
+                phase={viewedPhase}
+                isCompleted={completedPhases.includes(viewedPhase)}
+                tasks={tasks.filter((task) => task.phase === viewedPhase)}
+                taskHrefBase={buildHref({})}
+              />
+            </div>
+          ) : null}
+
           {activeTab === "communication" ? (
             <div className="space-y-4">
               {editedMessage ? (
                 <MessageEditPanel
                   message={editedMessage}
-                  closeHref={tabHref("communication")}
+                  closeHref={buildHref({})}
                 />
               ) : (
                 <MessageForm
@@ -271,24 +351,7 @@ export default async function ClientDetailPage(props: {
               <Timeline
                 messages={messages}
                 currentUserId={user.id}
-                editHrefBase={tabHref("communication")}
-              />
-            </div>
-          ) : null}
-
-          {activeTab === "tasks" ? (
-            <div className="space-y-4">
-              {editedTask ? (
-                <TaskEditPanel
-                  task={editedTask}
-                  closeHref={tabHref("tasks")}
-                />
-              ) : null}
-              <TaskBoard
-                projectId={selectedProject.id}
-                currentPhase={selectedProject.phase}
-                tasks={tasks}
-                taskHrefBase={`${tabHref("tasks")}`}
+                editHrefBase={buildHref({})}
               />
             </div>
           ) : null}
@@ -306,97 +369,53 @@ export default async function ClientDetailPage(props: {
             <div className="grid gap-4 lg:grid-cols-2">
               <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
                 <h2 className="text-sm font-semibold text-slate-900">
-                  Klientský portál
+                  Zakázky
                 </h2>
-                <ProjectPortalForm
-                  projectId={selectedProject.id}
-                  portalNote={selectedProject.portalNote}
-                  previewUrl={selectedProject.previewUrl}
-                  dueDate={selectedProject.dueDate}
-                />
-                <hr className="border-slate-100" />
-                <PortalLinkPanel
-                  projectId={selectedProject.id}
-                  previewHref={`/clients/${client.id}/preview?project=${selectedProject.id}`}
-                  portalLink={
-                    portalLink
-                      ? {
-                          id: portalLink.id,
-                          expiresAt: portalLink.expiresAt,
-                          lastVisitedAt: portalLink.lastVisitedAt,
-                          createdAt: portalLink.createdAt,
-                        }
-                      : null
-                  }
-                  approvals={approvals.map((approval) => ({
-                    id: approval.id,
-                    phase: approval.phase,
-                    createdAt: approval.createdAt,
-                    ipAddress: approval.ipAddress,
-                    snapshotNote: approval.snapshotNote,
-                    snapshotPreviewUrl: approval.snapshotPreviewUrl,
-                  }))}
-                />
+                <NewProjectForm clientId={client.id} />
+
+                <ul className="space-y-2 text-sm">
+                  {client.projects.map((project) => (
+                    <li
+                      key={project.id}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate text-slate-700">
+                        {project.name}
+                      </span>
+                      <form action={setProjectStatus}>
+                        <input
+                          type="hidden"
+                          name="projectId"
+                          value={project.id}
+                        />
+                        <input
+                          type="hidden"
+                          name="status"
+                          value={
+                            project.status === ProjectStatus.ACTIVE
+                              ? ProjectStatus.DONE
+                              : ProjectStatus.ACTIVE
+                          }
+                        />
+                        <button
+                          type="submit"
+                          className="shrink-0 text-xs text-slate-500 transition hover:text-slate-900"
+                        >
+                          {project.status === ProjectStatus.ACTIVE
+                            ? "Označit dokončenou"
+                            : "Vrátit do aktivních"}
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
               </section>
 
-              <div className="space-y-4">
-                <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    Klient
-                  </h2>
-                  <ClientDetailForm client={client} />
-                </section>
-
-                <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    Zakázky
-                  </h2>
-                  <NewProjectForm clientId={client.id} />
-
-                  <ul className="space-y-2 text-sm">
-                    {client.projects.map((project) => (
-                      <li
-                        key={project.id}
-                        className="flex items-center justify-between gap-2"
-                      >
-                        <span className="truncate text-slate-700">
-                          {project.name}
-                        </span>
-                        <form action={setProjectStatus}>
-                          <input
-                            type="hidden"
-                            name="projectId"
-                            value={project.id}
-                          />
-                          <input
-                            type="hidden"
-                            name="status"
-                            value={
-                              project.status === ProjectStatus.ACTIVE
-                                ? ProjectStatus.DONE
-                                : ProjectStatus.ACTIVE
-                            }
-                          />
-                          <button
-                            type="submit"
-                            className="shrink-0 text-xs text-slate-500 transition hover:text-slate-900"
-                          >
-                            {project.status === ProjectStatus.ACTIVE
-                              ? "Označit dokončenou"
-                              : "Vrátit do aktivních"}
-                          </button>
-                        </form>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                <DeleteClientPanel
-                  clientId={client.id}
-                  companyName={client.companyName}
-                  attachmentCount={files.length}
-                />
-              </div>
+              <DeleteClientPanel
+                clientId={client.id}
+                companyName={client.companyName}
+                attachmentCount={files.length}
+              />
             </div>
           ) : null}
         </>

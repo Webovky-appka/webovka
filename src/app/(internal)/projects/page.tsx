@@ -88,12 +88,22 @@ export default async function ProjectsPage(props: {
           </p>
         </div>
 
-        <Link
-          href="/clients/new"
-          className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-        >
-          Nový klient
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* Seznam klientů je jen na archiv a klienty bez zakázky, proto není
+              v navigaci — pracuje se se zakázkami. */}
+          <Link
+            href="/clients"
+            className="rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+          >
+            Všichni klienti
+          </Link>
+          <Link
+            href="/clients/new"
+            className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Nový klient
+          </Link>
+        </div>
       </div>
 
       <form className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3">

@@ -29,12 +29,6 @@ export default async function InternalLayout({
                 Zakázky
               </Link>
               <Link
-                href="/clients"
-                className="text-slate-600 transition hover:text-slate-900"
-              >
-                Klienti
-              </Link>
-              <Link
                 href="/settings"
                 className="text-slate-600 transition hover:text-slate-900"
               >

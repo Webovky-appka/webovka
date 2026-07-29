@@ -66,9 +66,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  messages     Message[]
-  phaseChanges PhaseChange[]
-  attachments  Attachment[]
+  messages         Message[]
+  phaseCompletions PhaseCompletion[]
+  attachments      Attachment[]
 }
 
 model Client {
@@ -111,15 +111,31 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tasks        Task[]
-  messages     Message[]
-  phaseChanges PhaseChange[]
-  approvals    Approval[]
-  portalLinks  PortalLink[]
-  attachments  Attachment[]
+  tasks            Task[]
+  messages         Message[]
+  phaseCompletions PhaseCompletion[]
+  approvals        Approval[]
+  portalLinks      PortalLink[]
+  attachments      Attachment[]
 
   @@index([clientId])
   @@index([status])
+}
+
+/// Ukončená fáze zakázky. Fáze se ukončují jednotlivě, protože přepínání mezi
+/// nimi je jen prohlížení — stav mění teprve ukončení.
+model PhaseCompletion {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  phase       Phase
+  completedAt DateTime @default(now())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, phase])
+  @@index([projectId])
 }
 
 model Message {
@@ -170,20 +186,6 @@ model TaskTemplate {
   position Int    @default(0)
 
   @@index([phase, position])
-}
-
-model PhaseChange {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  fromPhase Phase
-  toPhase   Phase
-  userId    String?
-  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
-
-  @@index([projectId, createdAt])
 }
 
 /// Schválení fáze klientem. Oddělené od Message, protože musí být dohledatelné.
