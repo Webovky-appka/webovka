@@ -42,7 +42,17 @@ za člena týmu.
 3. Volitelně si vytvořte druhou branch databáze pro vývoj, aby se testovací
    data nemíchala s produkčními.
 
-Migrace se na produkční databázi spouští z lokálního stroje:
+Migrace se aplikují samy při nasazení do produkce. Build na Vercelu spouští
+`scripts/vercel-build.mjs`, který před `next build` provede
+`prisma migrate deploy` — ale **jen když `VERCEL_ENV=production`**. Nasazení
+náhledu z rozpracované větve schéma nemění, protože Preview i Production míří
+na stejnou databázi a náhled by ji jinak přemigroval dřív než produkční kód.
+
+Pro migrace se přednostně použije `POSTGRES_URL_NON_POOLING`, pokud existuje.
+Migrace jsou DDL a přes connection pooler mohou selhat.
+
+Ručně z lokálního stroje to jde takto, například když chcete migraci aplikovat
+bez nasazení:
 
 ```bash
 DATABASE_URL="<produkcni-url>" npx prisma migrate deploy
@@ -51,6 +61,13 @@ DATABASE_URL="<produkcni-url>" npx prisma migrate deploy
 `migrate deploy` jen aplikuje existující migrace, nikdy nic nemaže. **Nikdy
 nespouštějte `prisma migrate reset` ani `npm run db:seed` proti produkci** —
 reset databázi vyprázdní a seed by založil účty s hesly z README.
+
+### Když Preview a Production sdílejí databázi
+
+Integrace Neonu ve Vercelu nastaví `DATABASE_URL` pro Preview i Production na
+tutéž databázi. Nasazení náhledu tedy čte a zapisuje produkční data. Pokud vám
+to vadí, vytvořte v Neonu druhou branch databáze a nastavte pro prostředí
+Preview vlastní `DATABASE_URL`.
 
 ## 2. Účty pro produkci
 
@@ -107,6 +124,10 @@ Bez `RESEND_API_KEY` aplikace funguje dál, notifikace se jen zapíšou do logu.
 
 `APP_URL` musí odpovídat skutečné adrese — sestavují se z ní odkazy do
 klientského portálu. Se špatnou hodnotou dostane klient odkaz, který nefunguje.
+
+Proměnné nastavte i pro prostředí **Preview**, ne jen Production. Bez
+`SESSION_SECRET` v Preview se na náhledu nepřihlásíte — aplikace při chybějícím
+klíči vyhodí chybu.
 
 ## 6. Po prvním nasazení zkontrolujte
 
