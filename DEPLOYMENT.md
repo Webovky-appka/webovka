@@ -71,18 +71,33 @@ Preview vlastní `DATABASE_URL`.
 
 ## 2. Účty pro produkci
 
-Seed s vývojovými hesly do produkce nepatří. Účty založte jednorázově skriptem
-s vlastními hesly:
+Seed s vývojovými hesly do produkce nepatří. Účty zakládejte skriptem
+`user:create`, který se na heslo zeptá skrytě — nezůstane tedy v historii
+shellu ani v logu.
+
+Nejdřív si stáhněte produkční proměnné z Vercelu:
 
 ```bash
-DATABASE_URL="<produkcni-url>" \
-SEED_ADMIN_EMAIL="vas@email.cz" SEED_ADMIN_PASSWORD="<silne-heslo>" \
-SEED_DEV_EMAIL="kolega@email.cz" SEED_DEV_PASSWORD="<silne-heslo>" \
-npm run db:seed
+npx vercel env pull .env.production --environment=production
 ```
 
-Seed zakládá klienty jen do prázdné databáze, takže ukázková data v produkci
-nevzniknou. Hesla si po prvním přihlášení každý změní v Nastavení.
+Soubor `.env.production` je v `.gitignore`, do repozitáře se nedostane.
+
+Pak založte svůj účet:
+
+```bash
+npm run user:create -- --env-file .env.production
+```
+
+Skript se nejdřív zeptá, jestli je to správná databáze — vypíše její hostitele,
+takže poznáte, jestli míříte na produkci nebo na localhost. Potom se doptá na
+e-mail, jméno, roli a heslo. Totéž zopakujte pro kolegu s rolí vývojář.
+
+Tentýž příkaz slouží i ke **změně zapomenutého hesla**: u existujícího e-mailu
+účet neduplikuje, jen mu nastaví nové heslo.
+
+Klienti účty nemají a v této tabulce se nikdy neobjeví. Dostávají odkaz a PIN,
+viz sekce 7.
 
 ## 3. Úložiště příloh (Vercel Blob)
 
@@ -136,6 +151,26 @@ klíči vyhodí chybu.
 - Nahrání přílohy projde a soubor se dá stáhnout (ověřuje, že Blob store jede).
 - `https://<domena>/robots.txt` zakazuje indexaci.
 - V odpovědi je hlavička `Strict-Transport-Security` (lokálně se nenastavuje).
+
+## 7. Jak klient dostane přístup
+
+Klient **nemá účet, e-mail ani heslo** a nikdy mít nebude. Postup je vždy tento:
+
+1. V aplikaci založte klienta a jeho zakázku (Klienti → Nový klient).
+2. Na detailu klienta otevřete záložku **Nastavení**.
+3. Vyplňte **Poznámku pro klienta** a případně odkaz na náhled webu, uložte.
+   Tohle klient v portálu uvidí.
+4. V panelu **Odkaz pro klienta** klikněte na Vygenerovat odkaz.
+5. Zobrazí se URL a šestimístný PIN. **PIN se zobrazí jen tehdy** — v databázi
+   je pak už jen jeho hash a znovu ho nepřečtete.
+6. Odkaz i PIN pošlete klientovi. Pro jistotu jiným kanálem než odkaz, tedy
+   například odkaz e-mailem a PIN v SMS.
+
+Než odkaz odešlete, můžete si tlačítkem **Zobrazit jako klient** ověřit, co
+uvidí. Náhled má schvalovací akce vypnuté.
+
+Když PIN zapomenete nebo se odkaz dostane k nesprávné osobě, klikněte na
+Vygenerovat nový odkaz — starý tím okamžitě přestane platit.
 
 ## Zálohy
 

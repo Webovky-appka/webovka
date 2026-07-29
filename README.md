@@ -77,6 +77,7 @@ zakládají zvlášť, s vlastními hesly.
 | `npm run db:migrate` | Vytvoří a aplikuje migraci               |
 | `npm run db:seed`    | Nasype ukázková data                     |
 | `npm run db:studio`  | Prisma Studio nad databází               |
+| `npm run user:create`| Založí nebo přehesluje interní účet      |
 | `npm run db:reset`   | Smaže databázi a přehraje migrace i seed |
 
 ## Struktura
