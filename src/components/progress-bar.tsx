@@ -1,10 +1,13 @@
 export function ProgressBar({
   done,
   total,
+  label,
   className = "",
 }: {
   done: number;
   total: number;
+  /** Vlastní popisek vedle pruhu. Bez něj se ukáže jen "hotové/celkem". */
+  label?: string;
   className?: string;
 }) {
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
@@ -17,15 +20,15 @@ export function ProgressBar({
         aria-valuenow={done}
         aria-valuemin={0}
         aria-valuemax={total}
-        aria-label={`Hotovo ${done} z ${total} úkolů`}
+        aria-label={label ?? `Hotovo ${done} z ${total}`}
       >
         <div
           className="h-full rounded-full bg-emerald-500 transition-[width]"
           style={{ width: `${percent}%` }}
         />
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-slate-500">
-        {done}/{total}
+      <span className="shrink-0 text-xs text-slate-500">
+        {label ?? `${done}/${total}`}
       </span>
     </div>
   );

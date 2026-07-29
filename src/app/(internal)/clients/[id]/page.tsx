@@ -16,13 +16,13 @@ import { ProjectPortalForm } from "@/components/client/project-portal-form";
 import { TaskEditPanel } from "@/components/client/task-edit-panel";
 import { Timeline } from "@/components/client/timeline";
 import { PhaseBadge } from "@/components/phase-badge";
+import { SiteEmbed } from "@/components/site-embed";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
 import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 const TABS = [
-  { key: "communication", label: "Komunikace" },
   { key: "files", label: "Soubory" },
   { key: "settings", label: "Nastavení" },
 ] as const;
@@ -75,7 +75,6 @@ export default async function ClientDetailPage(props: {
           name: true,
           status: true,
           portalNote: true,
-          currentSiteUrl: true,
           previewUrl: true,
         },
       },
@@ -146,7 +145,8 @@ export default async function ClientDetailPage(props: {
     ]),
   );
 
-  const doneCount = tasks.filter((task) => task.done).length;
+  // Progres ukazuje hotové fáze — posune se, až fázi ukončíte, ne po každém úkolu.
+  const donePhases = ordered.filter((phase) => phase.completedAt !== null).length;
 
   function buildHref(overrides: {
     tab?: TabKey | null;
@@ -220,6 +220,7 @@ export default async function ClientDetailPage(props: {
               {client.projects.map((project) => (
                 <Link
                   key={project.id}
+                  scroll={false}
                   href={`/clients/${client.id}?project=${project.id}`}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                     project.id === selectedProject.id
@@ -240,9 +241,10 @@ export default async function ClientDetailPage(props: {
                 {selectedProject.name}
               </h2>
               <ProgressBar
-                done={doneCount}
-                total={tasks.length}
-                className="w-48"
+                done={donePhases}
+                total={ordered.length}
+                label={`${donePhases} z ${ordered.length} fází hotovo`}
+                className="w-56"
               />
             </div>
 
@@ -274,24 +276,12 @@ export default async function ClientDetailPage(props: {
               </button>
             </form>
 
-            {editedTask ? (
-              <TaskEditPanel
-                task={editedTask}
-                clientId={client.id}
-                projectId={selectedProject.id}
-                phases={ordered.map((phase) => ({
-                  id: phase.id,
-                  name: phase.name,
-                }))}
-                closeHref={buildHref({})}
-              />
-            ) : null}
-
             {viewedPhase ? (
               <PhaseTasks
                 phaseId={viewedPhase.id}
                 phaseName={viewedPhase.name}
                 phaseDueDate={viewedPhase.dueDate}
+                projectName={selectedProject.name}
                 isCompleted={viewedPhase.completedAt !== null}
                 canDeletePhase={ordered.length > 1}
                 tasks={tasks.filter((task) => task.phaseId === viewedPhase.id)}
@@ -302,11 +292,30 @@ export default async function ClientDetailPage(props: {
                 Zakázka nemá žádnou fázi. Přidejte první a můžete zadávat úkoly.
               </p>
             )}
+
+            {editedTask ? (
+              <div id="task-editor">
+                <TaskEditPanel
+                  task={editedTask}
+                  clientId={client.id}
+                  projectId={selectedProject.id}
+                  projectName={selectedProject.name}
+                  phases={ordered.map((phase) => ({
+                    id: phase.id,
+                    name: phase.name,
+                  }))}
+                  closeHref={buildHref({})}
+                />
+              </div>
+            ) : null}
           </section>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-slate-900">Klient</h2>
+              {client.website ? (
+                <SiteEmbed url={client.website} title="Stávající web klienta" />
+              ) : null}
               <ClientDetailForm client={client} />
             </section>
 
@@ -317,7 +326,6 @@ export default async function ClientDetailPage(props: {
               <ProjectPortalForm
                 projectId={selectedProject.id}
                 portalNote={selectedProject.portalNote}
-                currentSiteUrl={selectedProject.currentSiteUrl}
                 previewUrl={selectedProject.previewUrl}
               />
               <hr className="border-slate-100" />
@@ -350,6 +358,7 @@ export default async function ClientDetailPage(props: {
             {TABS.map((tab) => (
               <Link
                 key={tab.key}
+                scroll={false}
                 href={buildHref({ tab: tab.key })}
                 className={`-mb-px border-b-2 px-3 py-2 text-sm transition ${
                   tab.key === activeTab
@@ -361,27 +370,6 @@ export default async function ClientDetailPage(props: {
               </Link>
             ))}
           </nav>
-
-          {activeTab === "communication" ? (
-            <div className="space-y-4">
-              {editedMessage ? (
-                <MessageEditPanel
-                  message={editedMessage}
-                  closeHref={buildHref({})}
-                />
-              ) : (
-                <MessageForm
-                  clientId={client.id}
-                  projectId={selectedProject.id}
-                />
-              )}
-              <Timeline
-                messages={messages}
-                currentUserId={user.id}
-                editHrefBase={buildHref({})}
-              />
-            </div>
-          ) : null}
 
           {activeTab === "files" ? (
             <FilesPanel
@@ -445,6 +433,26 @@ export default async function ClientDetailPage(props: {
               />
             </div>
           ) : null}
+
+          <section className="space-y-4">
+            <h2 className="font-medium text-slate-900">Komunikace</h2>
+            {editedMessage ? (
+              <MessageEditPanel
+                message={editedMessage}
+                closeHref={buildHref({})}
+              />
+            ) : (
+              <MessageForm
+                clientId={client.id}
+                projectId={selectedProject.id}
+              />
+            )}
+            <Timeline
+              messages={messages}
+              currentUserId={user.id}
+              editHrefBase={buildHref({})}
+            />
+          </section>
         </>
       ) : null}
     </div>

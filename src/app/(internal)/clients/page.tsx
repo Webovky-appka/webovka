@@ -66,6 +66,15 @@ export default async function ClientsPage(props: {
 
   return (
     <div className="space-y-6">
+      <div>
+        <Link
+          href="/projects"
+          className="text-sm text-slate-500 transition hover:text-slate-900"
+        >
+          ← Zpět na všechny zakázky
+        </Link>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">

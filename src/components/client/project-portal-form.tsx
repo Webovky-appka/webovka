@@ -11,12 +11,10 @@ import { Field, FormError, TextareaField } from "@/components/field";
 export function ProjectPortalForm({
   projectId,
   portalNote,
-  currentSiteUrl,
   previewUrl,
 }: {
   projectId: string;
   portalNote: string | null;
-  currentSiteUrl: string | null;
   previewUrl: string | null;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -36,22 +34,13 @@ export function ProjectPortalForm({
         hint="Zobrazí se klientovi v portálu. Interní poznámky se tam nikdy nedostanou."
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          label="Stávající web klienta"
-          name="currentSiteUrl"
-          defaultValue={currentSiteUrl}
-          placeholder="https://"
-          hint="Web, který předěláváme."
-        />
-        <Field
-          label="Náš nový web"
-          name="previewUrl"
-          defaultValue={previewUrl}
-          placeholder="https://"
-          hint="Testovací verze nebo už spuštěný web."
-        />
-      </div>
+      <Field
+        label="Náš nový web"
+        name="previewUrl"
+        defaultValue={previewUrl}
+        placeholder="https://"
+        hint="Testovací verze nebo už spuštěný web. Klient ho uvidí v portálu."
+      />
 
       <FormError message={state?.error} />
 

@@ -28,7 +28,6 @@ const PortalSchema = z.object({
     .trim()
     .transform((value) => (value === "" ? null : value))
     .nullable(),
-  currentSiteUrl: optionalUrl,
   previewUrl: optionalUrl,
 });
 
@@ -310,7 +309,6 @@ export async function updateProjectPortal(
 
   const parsed = PortalSchema.safeParse({
     portalNote: formData.get("portalNote"),
-    currentSiteUrl: formData.get("currentSiteUrl"),
     previewUrl: formData.get("previewUrl"),
   });
 

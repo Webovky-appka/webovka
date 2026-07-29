@@ -2,11 +2,11 @@ import Link from "next/link";
 
 import {
   completePhase,
-  deletePhase,
   renamePhase,
   reopenPhase,
   updatePhaseDueDate,
 } from "@/app/actions/projects";
+import { DeletePhaseDialog } from "@/components/client/delete-phase-dialog";
 import { createTask, deleteTask, toggleTask } from "@/app/actions/tasks";
 import {
   formatDayShort,
@@ -33,6 +33,7 @@ export function PhaseTasks({
   phaseId,
   phaseName,
   phaseDueDate,
+  projectName,
   isCompleted,
   canDeletePhase,
   tasks,
@@ -41,6 +42,7 @@ export function PhaseTasks({
   phaseId: string;
   phaseName: string;
   phaseDueDate: Date | null;
+  projectName: string;
   isCompleted: boolean;
   canDeletePhase: boolean;
   tasks: PhaseTaskRow[];
@@ -58,7 +60,11 @@ export function PhaseTasks({
     >
       <header className="space-y-3 border-b border-slate-100 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <form action={renamePhase} className="flex flex-1 items-center gap-2">
+          <form
+            key={`rename-${phaseId}`}
+            action={renamePhase}
+            className="flex flex-1 items-center gap-2"
+          >
             <input type="hidden" name="phaseId" value={phaseId} />
             <input
               name="name"
@@ -114,7 +120,11 @@ export function PhaseTasks({
             {isCompleted ? " · fáze je ukončená" : ""}
           </span>
 
-          <form action={updatePhaseDueDate} className="flex items-center gap-2">
+          <form
+            key={`due-${phaseId}`}
+            action={updatePhaseDueDate}
+            className="flex items-center gap-2"
+          >
             <input type="hidden" name="phaseId" value={phaseId} />
             <label htmlFor={`due-${phaseId}`}>Termín fáze</label>
             <input
@@ -132,12 +142,14 @@ export function PhaseTasks({
           </form>
 
           {canDeletePhase ? (
-            <form action={deletePhase} className="ml-auto">
-              <input type="hidden" name="phaseId" value={phaseId} />
-              <button type="submit" className="transition hover:text-red-600">
-                Smazat fázi i s úkoly
-              </button>
-            </form>
+            <div className="ml-auto">
+              <DeletePhaseDialog
+                phaseId={phaseId}
+                phaseName={phaseName}
+                projectName={projectName}
+                taskCount={phaseTasks.length}
+              />
+            </div>
           ) : null}
         </div>
       </header>
@@ -180,7 +192,7 @@ export function PhaseTasks({
                 </form>
 
                 <div className="min-w-0 flex-1">
-                  <Link href={`${taskHrefBase}&task=${task.id}`}>
+                  <Link href={`${taskHrefBase}&task=${task.id}#task-editor`}>
                     <span
                       className={`block ${
                         task.done
@@ -226,7 +238,7 @@ export function PhaseTasks({
                     ))}
 
                     <Link
-                      href={`${taskHrefBase}&task=${task.id}`}
+                      href={`${taskHrefBase}&task=${task.id}#task-editor`}
                       className="text-slate-500 transition hover:text-slate-900"
                     >
                       Upravit a přidat soubor
