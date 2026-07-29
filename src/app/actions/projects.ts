@@ -6,6 +6,7 @@ import * as z from "zod";
 
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
+import { parseRepo } from "@/lib/github";
 import { notifyClientPhaseChanged } from "@/lib/notifications";
 import { DEFAULT_PHASES, activePhase } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
@@ -346,6 +347,31 @@ export async function updatePhaseDueDate(formData: FormData) {
   });
 
   revalidatePath(`/clients/${phase.project.clientId}`);
+}
+
+/**
+ * Uloží repozitář zakázky. Bere i celou adresu z prohlížeče nebo ssh remote,
+ * ukládá se z toho jen owner/repo. Prázdné pole repozitář odpojí.
+ */
+export async function setProjectRepo(formData: FormData) {
+  await requireUser();
+
+  const projectId = formData.get("projectId");
+  const repo = formData.get("repo");
+  if (typeof projectId !== "string" || typeof repo !== "string") return;
+
+  const parsed = parseRepo(repo);
+  // Nesmysl neukládáme, ale ani nemažeme, co už je nastavené — panel u zakázky
+  // ukáže původní hodnotu, takže je vidět, že se změna nepovedla.
+  if (repo.trim() !== "" && parsed === null) return;
+
+  const project = await prisma.project.update({
+    where: { id: projectId },
+    data: { repoFullName: parsed },
+    select: { clientId: true },
+  });
+
+  revalidatePath(`/clients/${project.clientId}`);
 }
 
 export async function setProjectStatus(formData: FormData) {

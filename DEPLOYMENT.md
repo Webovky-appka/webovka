@@ -199,6 +199,49 @@ je to práce na pár hodin — řekněte, jestli to chcete přidat.
 Uložený token je v databázi zašifrovaný klíčem odvozeným ze `SESSION_SECRET`.
 Změna `SESSION_SECRET` tedy napojení zneplatní — udělá se znovu.
 
+## 4d. Dokumenty v Google Docs
+
+Používá se **stejný OAuth klient jako pro Gmail**, jen s jedním rozsahem navíc.
+Aplikace dostane `drive.file`, tedy právo jen k souborům, které sama vytvořila —
+na ostatní obsah vašeho Drive nevidí a vypsat ho neumí.
+
+1. V Google Cloud Console **APIs & Services → Library** zapněte **Google Drive
+   API** a **Google Docs API**. Obě, samotné Drive API dokument nenaplní textem.
+2. V **OAuth consent screen → Scopes** přidejte
+   `https://www.googleapis.com/auth/drive.file`.
+3. V aplikaci se napojte znovu — **Dokumenty → Napojit účet znovu**. Účty
+   napojené dřív mají v uloženém souhlasu jen `gmail.send`, takže dokumenty
+   zakládat nemohou. Odesílání pošty jim funguje dál.
+
+Dokument patří tomu, kdo ho založil. Kolegům se nasdílí přímo v Google Docs,
+aplikace do sdílení nezasahuje. Odebrání dokumentu v aplikaci smaže jen odkaz,
+soubor v Drive zůstane.
+
+`drive.file` je u Googlu *non-sensitive*, takže nezvyšuje nároky na ověření —
+platí pro něj totéž, co je popsané výše u `gmail.send`.
+
+## 4e. Repozitáře z GitHubu
+
+Záložka GitHub u zakázky čte posledních pět commitů, otevřené pull requesty a
+poslední běh Actions. Jen čtení, aplikace do repozitáře nikdy nezapisuje. Token
+je jeden pro celé studio, uživatelé nic nepřipojují.
+
+1. Na GitHubu **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token**.
+2. **Resource owner** nastavte na organizaci, které repozitáře patří, a vyberte
+   repozitáře zakázek.
+3. Oprávnění: **Contents: Read-only**, **Pull requests: Read-only**,
+   **Actions: Read-only**. Nic víc token potřebovat nebude.
+4. Token vložte jako `GITHUB_TOKEN` do `.env` a na Vercelu do proměnných
+   prostředí. Do gitu ani do zpráv ho nedávejte.
+5. U zakázky pak v záložce **GitHub** vyplňte repozitář. Stačí vložit celou
+   adresu z prohlížeče, uloží se z ní `owner/repo`.
+
+Odpovědi GitHubu se drží dvě minuty v cache, aby přepínání záložek nevyčerpalo
+kvótu. Bez `Actions: Read-only` přehled funguje dál, jen se nezobrazí stav CI.
+Fine-grained tokeny mají platnost — po vypršení záložka nahlásí neplatný token
+a token se vydá znovu.
+
 ## 5. Aplikace (Vercel)
 
 1. Naimportujte repozitář `jakubsovadina/web-appka`.
@@ -223,8 +266,9 @@ Změna `SESSION_SECRET` tedy napojení zneplatní — udělá se znovu.
 | `MAIL_SIGNATURE`        | ne      | Podpis v e-mailech pro klienty                |
 | `OPENAI_API_KEY`        | ne      | Klíč pro návrhy e-mailů                       |
 | `OPENAI_MODEL`          | ne      | Jiný model, výchozí `gpt-4o-mini`             |
-| `GOOGLE_CLIENT_ID`      | ne      | OAuth klient pro odesílání z Gmailu           |
+| `GOOGLE_CLIENT_ID`      | ne      | OAuth klient pro Gmail a Google Docs          |
 | `GOOGLE_CLIENT_SECRET`  | ne      | Tajný klíč téhož OAuth klienta                |
+| `GITHUB_TOKEN`          | ne      | Fine-grained PAT pro čtení repozitářů         |
 
 `APP_URL` musí odpovídat skutečné adrese — sestavují se z ní odkazy do
 klientského portálu. Se špatnou hodnotou dostane klient odkaz, který nefunguje.

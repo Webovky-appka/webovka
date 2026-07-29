@@ -41,17 +41,23 @@ export function SaveIndicator({ className = "" }: { className?: string }) {
 /**
  * Text, který se uloží po opuštění políčka nebo Enterem. Prázdná hodnota se
  * neukládá — vrátí se poslední uložená, aby se název nedal smazat omylem.
+ * S allowEmpty se prázdné pole uloží; to je pro nepovinné údaje, které má jít
+ * zrušit vymazáním.
  */
 export function AutoSaveInput({
   name,
   defaultValue,
   ariaLabel,
   className,
+  placeholder,
+  allowEmpty = false,
 }: {
   name: string;
   defaultValue: string;
   ariaLabel: string;
   className?: string;
+  placeholder?: string;
+  allowEmpty?: boolean;
 }) {
   const lastSaved = useRef(defaultValue);
 
@@ -61,11 +67,12 @@ export function AutoSaveInput({
       defaultValue={defaultValue}
       aria-label={ariaLabel}
       className={className}
+      placeholder={placeholder}
       onBlur={(event) => {
         const input = event.currentTarget;
         const value = input.value.trim();
 
-        if (value === "") {
+        if (value === "" && !allowEmpty) {
           input.value = lastSaved.current;
           return;
         }

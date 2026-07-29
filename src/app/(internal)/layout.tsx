@@ -29,6 +29,12 @@ export default async function InternalLayout({
                 Zakázky
               </Link>
               <Link
+                href="/docs"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Dokumenty
+              </Link>
+              <Link
                 href="/settings"
                 className="text-slate-600 transition hover:text-slate-900"
               >

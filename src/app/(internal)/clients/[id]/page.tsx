@@ -5,8 +5,10 @@ import { AuthorType } from "@prisma/client";
 import { createPhase } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
 import { DeleteClientPanel } from "@/components/client/delete-client-panel";
+import { DocsPanel } from "@/components/client/docs-panel";
 import { EmailComposer } from "@/components/client/email-composer";
 import { FilesPanel } from "@/components/client/files-panel";
+import { GithubPanel } from "@/components/client/github-panel";
 import { MessageEditPanel } from "@/components/client/message-edit-panel";
 import { MessageForm } from "@/components/client/message-form";
 import { NewProjectForm } from "@/components/client/new-project-form";
@@ -25,13 +27,16 @@ import { SiteEmbed } from "@/components/site-embed";
 import { ProgressBar } from "@/components/progress-bar";
 import { aiModel, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
-import { googleAccountFor } from "@/lib/google";
+import { DOC_TEMPLATES } from "@/lib/doc-templates";
+import { googleAccountFor, hasDocsAccess, isGoogleConfigured } from "@/lib/google";
 import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 const TABS = [
   { key: "messages", label: "Komunikace" },
+  { key: "docs", label: "Dokumenty" },
   { key: "files", label: "Soubory" },
+  { key: "github", label: "GitHub" },
   { key: "settings", label: "Nastavení" },
   { key: "email", label: "Napsat e-mail" },
 ] as const;
@@ -85,6 +90,7 @@ export default async function ClientDetailPage(props: {
           status: true,
           portalNote: true,
           previewUrl: true,
+          repoFullName: true,
         },
       },
     },
@@ -145,6 +151,25 @@ export default async function ClientDetailPage(props: {
   // netaháme do databáze.
   const gmailAccount =
     activeTab === "email" ? await googleAccountFor(user.id) : null;
+
+  // Totéž pro dokumenty — napojení účtu a seznam dokumentů řeší jen svoje záložka.
+  const [docsAccount, projectDocs] =
+    activeTab === "docs" && selectedProject
+      ? await Promise.all([
+          googleAccountFor(user.id),
+          prisma.projectDoc.findMany({
+            where: { projectId: selectedProject.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              title: true,
+              webViewLink: true,
+              createdAt: true,
+              createdBy: { select: { name: true } },
+            },
+          }),
+        ])
+      : [null, []];
 
   const ordered = sortPhases(phases);
   const current = activePhase(ordered);
@@ -386,12 +411,30 @@ export default async function ClientDetailPage(props: {
             ))}
           </nav>
 
+          {activeTab === "docs" ? (
+            <DocsPanel
+              projectId={selectedProject.id}
+              templates={DOC_TEMPLATES}
+              docs={projectDocs}
+              googleEmail={docsAccount?.email ?? null}
+              docsAllowed={hasDocsAccess(docsAccount?.scope)}
+              googleConfigured={isGoogleConfigured()}
+            />
+          ) : null}
+
           {activeTab === "files" ? (
             <FilesPanel
               clientId={client.id}
               projectId={selectedProject.id}
               projectName={selectedProject.name}
               files={files}
+            />
+          ) : null}
+
+          {activeTab === "github" ? (
+            <GithubPanel
+              projectId={selectedProject.id}
+              repoFullName={selectedProject.repoFullName}
             />
           ) : null}
 

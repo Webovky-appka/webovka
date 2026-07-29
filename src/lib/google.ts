@@ -13,18 +13,35 @@ import { decryptSecret, encryptSecret } from "@/lib/secrets";
  * U aplikace v režimu Testing platí refresh token 7 dní — potom přihlášení
  * vyprší a musí se udělat znovu. Chová se to jako chyba invalid_grant, kterou
  * tady zachytáváme a napojení rovnou zrušíme, ať je v UI vidět, co se stalo.
+ * Jak se sedmidenního limitu zbavit, je v DEPLOYMENT.md, sekce 4c.
  */
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 const SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
+/**
+ * drive.file dává právo jen k souborům, které aplikace sama vytvořila — na
+ * ostatní obsah Drive nevidí. Proto se dokumenty nedají zakládat kopií šablony
+ * z Drive a předlohy držíme v aplikaci.
+ */
+export const DOCS_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
 /** gmail.send umí jen odesílat — na čtení pošty nemá aplikace právo. */
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
+  DOCS_SCOPE,
   "openid",
   "email",
 ].join(" ");
+
+/**
+ * Účty napojené před přidáním Docs mají v uloženém scope jen gmail.send.
+ * Odesílání pošty jim funguje dál, na zakládání dokumentů se musí napojit znovu.
+ */
+export function hasDocsAccess(scope: string | null | undefined): boolean {
+  return Boolean(scope?.includes("drive.file"));
+}
 
 export function isGoogleConfigured(): boolean {
   return Boolean(
@@ -166,10 +183,10 @@ export async function connectGoogleAccount(
 
 const EXPIRY_MARGIN_MS = 60_000;
 
-type AccessToken = { token: string } | { error: string };
+export type AccessToken = { token: string } | { error: string };
 
 /** Vrátí platný access token, případně si ho obnoví refresh tokenem. */
-async function accessTokenFor(userId: string): Promise<AccessToken> {
+export async function accessTokenFor(userId: string): Promise<AccessToken> {
   const account = await prisma.googleAccount.findUnique({
     where: { userId },
     select: {
@@ -316,6 +333,6 @@ export async function disconnectGoogleAccount(userId: string): Promise<void> {
 export async function googleAccountFor(userId: string) {
   return prisma.googleAccount.findUnique({
     where: { userId },
-    select: { email: true, createdAt: true },
+    select: { email: true, createdAt: true, scope: true },
   });
 }
