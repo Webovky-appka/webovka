@@ -28,6 +28,18 @@ function driver(): "local" | "blob" {
 }
 
 /**
+ * Vercel Blob se autorizuje dvěma způsoby: dlouhodobým BLOB_READ_WRITE_TOKEN,
+ * nebo krátkodobým OIDC tokenem, ke kterému je ale potřeba id storu. Integrace
+ * Blobu ve Vercelu dodává druhou variantu (BLOB_STORE_ID + VERCEL_OIDC_TOKEN),
+ * takže storeId předáváme, kdykoli ho známe — bez něj by nahrávání selhalo na
+ * chybějícím tokenu.
+ */
+function blobOptions(): { storeId?: string } {
+  const storeId = process.env.BLOB_STORE_ID;
+  return storeId ? { storeId } : {};
+}
+
+/**
  * Klíč v úložišti. Nikdy nepoužíváme jméno souboru od uživatele — mohlo by
  * obsahovat cestu nebo kolidovat s jiným souborem.
  */
@@ -50,6 +62,7 @@ export async function saveFile(
       access: "public",
       contentType: file.type,
       addRandomSuffix: false,
+      ...blobOptions(),
     });
     return { storageKey };
   }
@@ -63,7 +76,7 @@ export async function saveFile(
 export async function readFile(storageKey: string): Promise<Buffer> {
   if (driver() === "blob") {
     const { head } = await import("@vercel/blob");
-    const meta = await head(storageKey);
+    const meta = await head(storageKey, blobOptions());
     const response = await fetch(meta.url);
     return Buffer.from(await response.arrayBuffer());
   }
@@ -74,7 +87,7 @@ export async function readFile(storageKey: string): Promise<Buffer> {
 export async function deleteFile(storageKey: string): Promise<void> {
   if (driver() === "blob") {
     const { del } = await import("@vercel/blob");
-    await del(storageKey);
+    await del(storageKey, blobOptions());
     return;
   }
 
