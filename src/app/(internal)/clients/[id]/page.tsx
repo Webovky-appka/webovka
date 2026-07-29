@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AuthorType, ProjectStatus } from "@prisma/client";
+import { AuthorType } from "@prisma/client";
 
-import { createPhase, setProjectStatus } from "@/app/actions/projects";
+import { createPhase } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
 import { DeleteClientPanel } from "@/components/client/delete-client-panel";
+import { EmailComposer } from "@/components/client/email-composer";
 import { FilesPanel } from "@/components/client/files-panel";
 import { MessageEditPanel } from "@/components/client/message-edit-panel";
 import { MessageForm } from "@/components/client/message-form";
@@ -13,18 +14,26 @@ import { PhaseStepper } from "@/components/client/phase-stepper";
 import { PhaseTasks } from "@/components/client/phase-tasks";
 import { PortalLinkPanel } from "@/components/client/portal-link-panel";
 import { ProjectPortalForm } from "@/components/client/project-portal-form";
+import {
+  ClientStatusField,
+  ProjectStatusField,
+} from "@/components/client/status-panel";
 import { TaskEditPanel } from "@/components/client/task-edit-panel";
 import { Timeline } from "@/components/client/timeline";
 import { PhaseBadge } from "@/components/phase-badge";
 import { SiteEmbed } from "@/components/site-embed";
 import { ProgressBar } from "@/components/progress-bar";
+import { aiModel, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { googleAccountFor } from "@/lib/google";
 import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 const TABS = [
+  { key: "messages", label: "Komunikace" },
   { key: "files", label: "Soubory" },
   { key: "settings", label: "Nastavení" },
+  { key: "email", label: "Napsat e-mail" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -83,7 +92,8 @@ export default async function ClientDetailPage(props: {
 
   if (!client) notFound();
 
-  const activeTab = TABS.find((tab) => tab.key === tabParam)?.key ?? null;
+  // Komunikace je výchozí složka — otevře se sama, ale jde z ní přepnout.
+  const activeTab = TABS.find((tab) => tab.key === tabParam)?.key ?? "messages";
   const selectedProject =
     client.projects.find((p) => p.id === projectParam) ?? client.projects[0];
 
@@ -130,6 +140,11 @@ export default async function ClientDetailPage(props: {
           }),
         ])
       : [[], [], [], [], null, []];
+
+  // Napojení na Gmail je potřeba jen v záložce s e-mailem, jinak se pro nic
+  // netaháme do databáze.
+  const gmailAccount =
+    activeTab === "email" ? await googleAccountFor(user.id) : null;
 
   const ordered = sortPhases(phases);
   const current = activePhase(ordered);
@@ -253,7 +268,7 @@ export default async function ClientDetailPage(props: {
               viewedPhaseId={viewedPhase?.id ?? ""}
               activePhaseId={current?.id ?? null}
               unfinishedByPhase={unfinishedByPhase}
-              phaseHref={(phaseId) => buildHref({ tab: null, phase: phaseId })}
+              phaseHref={(phaseId) => buildHref({ phase: phaseId })}
             />
 
             <form action={createPhase} className="flex gap-2">
@@ -386,41 +401,38 @@ export default async function ClientDetailPage(props: {
                 <h2 className="text-sm font-semibold text-slate-900">
                   Zakázky
                 </h2>
+
+                {/* Stavy se ukládají hned po přepnutí, tlačítko Uložit tu není. */}
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-slate-700">
+                    Stav klienta
+                  </p>
+                  <ClientStatusField
+                    clientId={client.id}
+                    status={client.status}
+                  />
+                  <p className="text-xs text-slate-500">
+                    Archiv klienta skryje z přehledů, data zůstanou zachovaná.
+                  </p>
+                </div>
+
+                <hr className="border-slate-100" />
+
                 <NewProjectForm clientId={client.id} />
 
                 <ul className="space-y-2 text-sm">
                   {client.projects.map((project) => (
                     <li
                       key={project.id}
-                      className="flex items-center justify-between gap-2"
+                      className="flex flex-wrap items-center justify-between gap-2"
                     >
                       <span className="truncate text-slate-700">
                         {project.name}
                       </span>
-                      <form action={setProjectStatus}>
-                        <input
-                          type="hidden"
-                          name="projectId"
-                          value={project.id}
-                        />
-                        <input
-                          type="hidden"
-                          name="status"
-                          value={
-                            project.status === ProjectStatus.ACTIVE
-                              ? ProjectStatus.DONE
-                              : ProjectStatus.ACTIVE
-                          }
-                        />
-                        <button
-                          type="submit"
-                          className="shrink-0 text-xs text-slate-500 transition hover:text-slate-900"
-                        >
-                          {project.status === ProjectStatus.ACTIVE
-                            ? "Označit dokončenou"
-                            : "Vrátit do aktivních"}
-                        </button>
-                      </form>
+                      <ProjectStatusField
+                        projectId={project.id}
+                        status={project.status}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -434,25 +446,37 @@ export default async function ClientDetailPage(props: {
             </div>
           ) : null}
 
-          <section className="space-y-4">
-            <h2 className="font-medium text-slate-900">Komunikace</h2>
-            {editedMessage ? (
-              <MessageEditPanel
-                message={editedMessage}
-                closeHref={buildHref({})}
-              />
-            ) : (
-              <MessageForm
-                clientId={client.id}
-                projectId={selectedProject.id}
-              />
-            )}
-            <Timeline
-              messages={messages}
-              currentUserId={user.id}
-              editHrefBase={buildHref({})}
+          {activeTab === "email" ? (
+            <EmailComposer
+              projectId={selectedProject.id}
+              projectName={selectedProject.name}
+              clientEmail={client.email}
+              gmailAddress={gmailAccount?.email ?? null}
+              aiReady={isAiConfigured()}
+              aiModel={aiModel()}
             />
-          </section>
+          ) : null}
+
+          {activeTab === "messages" ? (
+            <section className="space-y-4">
+              {editedMessage ? (
+                <MessageEditPanel
+                  message={editedMessage}
+                  closeHref={buildHref({})}
+                />
+              ) : (
+                <MessageForm
+                  clientId={client.id}
+                  projectId={selectedProject.id}
+                />
+              )}
+              <Timeline
+                messages={messages}
+                currentUserId={user.id}
+                editHrefBase={buildHref({})}
+              />
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

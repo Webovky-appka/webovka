@@ -3,8 +3,14 @@ import { ProjectStatus, type Prisma } from "@prisma/client";
 
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
+import { ProjectFilter } from "@/components/project-filter";
 import { requireUser } from "@/lib/auth";
-import { formatRelativeDays, isContactStale, pluralCs } from "@/lib/format";
+import {
+  formatRelativeDays,
+  isContactStale,
+  pluralCs,
+  unfinishedTasksPhrase,
+} from "@/lib/format";
 import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
@@ -103,44 +109,23 @@ export default async function ProjectsPage(props: {
         </div>
       </div>
 
-      <form className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Hledat klienta nebo zakázku"
-          className="min-w-48 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-        />
-
-        <select
-          name="status"
-          defaultValue={status ?? "active"}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-sky-500"
-        >
-          <option value="active">Aktivní</option>
-          <option value="done">Dokončené</option>
-          <option value="archived">Archivované</option>
-          <option value="all">Vše</option>
-        </select>
-
-        <button
-          type="submit"
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
-        >
-          Filtrovat
-        </button>
-      </form>
+      <ProjectFilter q={q ?? ""} status={status ?? "active"} />
 
       {projects.length === 0 ? (
         <EmptyState hasFilter={Boolean(q || status)} />
       ) : (
         <ul className="space-y-2">
           {projects.map((project) => {
-            const total = project.tasks.length;
-            const done = project.tasks.filter((task) => task.done).length;
+            const phases = sortPhases(project.phases);
+            // Stejný pohled jako v detailu zakázky: progres měří hotové fáze,
+            // ne odškrtané úkoly.
+            const donePhases = phases.filter(
+              (phase) => phase.completedAt !== null,
+            ).length;
+            const openTasks = project.tasks.filter((task) => !task.done).length;
             const lastContact = project.client.messages[0]?.createdAt ?? null;
             const stale = isContactStale(lastContact);
-            const current = activePhase(sortPhases(project.phases));
+            const current = activePhase(phases);
 
             return (
               <li key={project.id}>
@@ -165,10 +150,16 @@ export default async function ProjectsPage(props: {
 
                   <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                     <ProgressBar
-                      done={done}
-                      total={total}
+                      done={donePhases}
+                      total={phases.length}
+                      label={`${donePhases} z ${phases.length} fází`}
                       className="min-w-40 flex-1"
                     />
+                    <span className="text-xs text-slate-500">
+                      {openTasks === 0
+                        ? "Úkoly hotové"
+                        : unfinishedTasksPhrase(openTasks)}
+                    </span>
                     <span
                       className={`text-xs ${stale ? "font-medium text-amber-700" : "text-slate-500"}`}
                     >

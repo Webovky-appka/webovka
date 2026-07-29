@@ -87,20 +87,50 @@ export async function updateClient(
     return { error: parsed.error.issues[0]?.message ?? "Neplatný vstup." };
   }
 
-  const status = formData.get("status");
-  const validStatus = Object.values(ClientStatus).find((s) => s === status);
-
+  // Stav se mění zvlášť v Nastavení, ať se uložením kontaktů nedá omylem
+  // přepsat archivace.
   await prisma.client.update({
     where: { id: clientId },
-    data: {
-      ...parsed.data,
-      ...(validStatus ? { status: validStatus } : {}),
-      archivedAt: validStatus === ClientStatus.ARCHIVED ? new Date() : null,
-    },
+    data: parsed.data,
   });
 
   revalidatePath(`/clients/${clientId}`);
   revalidatePath("/projects");
   revalidatePath("/clients");
   return undefined;
+}
+
+/** Mění stav klienta. Ukládá se hned při přepnutí, bez tlačítka. */
+export async function setClientStatus(formData: FormData) {
+  await requireUser();
+
+  const clientId = formData.get("clientId");
+  const status = formData.get("status");
+  if (typeof clientId !== "string" || clientId === "") return;
+
+  const validStatus = Object.values(ClientStatus).find((s) => s === status);
+  if (!validStatus) return;
+
+  const current = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { archivedAt: true },
+  });
+  if (!current) return;
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: {
+      status: validStatus,
+      // Datum archivace se drží od prvního zaarchivování, opakované nastavení
+      // stejného stavu ho nepřepíše.
+      archivedAt:
+        validStatus === ClientStatus.ARCHIVED
+          ? (current.archivedAt ?? new Date())
+          : null,
+    },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/projects");
+  revalidatePath("/clients");
 }
