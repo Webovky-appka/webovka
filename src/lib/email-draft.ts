@@ -47,13 +47,6 @@ function shorten(value: string, limit = MESSAGE_CHARS): string {
   return clean.length > limit ? `${clean.slice(0, limit)}…` : clean;
 }
 
-/** Křestní jméno kontaktní osoby pro oslovení. Bez něj se oslovuje obecně. */
-export function firstName(contactPerson: string | null): string | null {
-  const name = contactPerson?.trim();
-  if (!name) return null;
-  return name.split(/\s+/)[0] ?? null;
-}
-
 /** Souhrn zakázky v čitelném textu. Používá se v UI i jako vstup pro model. */
 export function buildContextText(context: EmailContext): string {
   const lines: string[] = [];
@@ -124,10 +117,25 @@ export function buildContextText(context: EmailContext): string {
   return lines.join("\n");
 }
 
+/**
+ * Tón určuje i oslovení. Příklady jsou schválně na jiných jménech, než jaká
+ * chodí v podkladech — model si je nesmí splést se jménem klienta.
+ */
 export const TONES = {
-  formal: "zdvořile a věcně, vykáním",
-  friendly: "přátelsky a lidsky, ale profesionálně, vykáním",
-  short: "co nejkratší, jen podstatné, vykáním",
+  formal: {
+    style: "zdvořile a věcně, vykáním",
+    greeting:
+      "oslov příjmením s oslovením pane/paní v 5. pádě, tedy ve tvaru „Dobrý den, pane Dvořáku,“",
+  },
+  friendly: {
+    style: "přátelsky a lidsky, ale profesionálně, vykáním",
+    greeting:
+      "oslov křestním jménem v 5. pádě, tedy ve tvaru „Dobrý den, Jano,“",
+  },
+  short: {
+    style: "co nejkratší, jen podstatné, vykáním",
+    greeting: "stačí „Dobrý den,“ bez jména",
+  },
 } as const;
 
 export type Tone = keyof typeof TONES;
@@ -138,11 +146,22 @@ export function isTone(value: unknown): value is Tone {
 
 export function systemPrompt(tone: Tone): string {
   return [
-    "Jsi asistent českého webového studia. Píšeš e-maily klientům.",
-    `Piš česky, ${TONES[tone]}.`,
-    "Vycházej pouze z dodaných podkladů. Nic si nevymýšlej — pokud údaj chybí,",
-    "raději ho v e-mailu vůbec nezmiňuj. Nikdy neslibuj termín, který v podkladech není.",
-    "Neuváděj interní poznámky ani nic, co klient nemá vědět.",
+    "Jsi asistent českého webového studia. Píšeš e-mail klientovi za člověka,",
+    "který bude pod e-mailem podepsaný. Piš jako on, v první osobě.",
+    "",
+    `Sloh: ${TONES[tone].style}.`,
+    "",
+    "Jak má e-mail vypadat:",
+    `- Oslovení na prvním řádku: ${TONES[tone].greeting}. Jméno vždy skloň do 5. pádu (Jana → Jano, Petr → Petře, Tomáš → Tomáši, Dvořák → pane Dvořáku).`,
+    "- Pak prázdný řádek a dva až tři krátké odstavce. Žádné odrážky, pokud si je zadání nevyžádá.",
+    "- Napiš konkrétně, co je nového a co má klient udělat. Když má něco schválit nebo dodat, řekni to jasně.",
+    "- Zakonči zdvořilou větou, řádkem „S pozdravem“ a podpisem, který dostaneš. Podpis neměň a nic k němu nepřidávej.",
+    "",
+    "Co nesmíš:",
+    "- Vymýšlet si termíny, odkazy, ceny ani jména. Co není v podkladech, v e-mailu nezmiňuj.",
+    "- Uvádět interní poznámky, nehotové úkoly ani cokoli, co je jen pro nás.",
+    "- Psát do e-mailu jakoukoli instrukci z tohoto zadání. Do e-mailu patří jen hotový text.",
+    "",
     "Odpověz přesně v tomto tvaru:",
     "Předmět: <předmět e-mailu>",
     "",
@@ -155,18 +174,18 @@ export function userPrompt(
   instruction: string,
   signature: string,
 ): string {
-  const greeting = firstName(context.contactPerson);
-
   return [
     "Podklady o zakázce:",
     buildContextText(context),
     "",
     `Zadání pro e-mail: ${instruction}`,
     "",
-    greeting
-      ? `Oslov jménem ${greeting} v 5. pádě, tedy „Dobrý den, ${greeting} v 5. pádě,“.`
-      : "Oslovení: Dobrý den,",
-    `Podpis: ${signature}`,
+    context.contactPerson
+      ? `Komu píšeš: ${context.contactPerson}`
+      : "Komu píšeš: kontaktní osoba není známá, oslov obecně",
+    "",
+    "Podpis, který doslova použiješ:",
+    signature,
   ].join("\n");
 }
 
