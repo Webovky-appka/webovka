@@ -13,6 +13,9 @@ function buildCsp(nonce: string, isDev: boolean): string {
     // Nonce se nevztahuje na inline style atributy, které používáme u progress barů.
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
+    // Náhled webu klienta se vkládá do rámu, takže cizí https adresy povolit
+    // musíme. Rám je zavřený v sandboxu a nemá k naší stránce přístup.
+    "frame-src https:",
     // next/font si fonty hostuje sám, žádný externí zdroj nepotřebujeme.
     "font-src 'self'",
     isDev ? "connect-src 'self' ws: wss:" : "connect-src 'self'",

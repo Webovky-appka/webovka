@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -110,6 +111,13 @@ export async function updateTask(
 
   revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
+
+  // Po uložení panel zavřeme, ať se uživatel nemusí vracet sám.
+  const closeHref = formData.get("closeHref");
+  if (typeof closeHref === "string" && closeHref.startsWith("/")) {
+    redirect(closeHref);
+  }
+
   return undefined;
 }
 

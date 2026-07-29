@@ -92,11 +92,10 @@ model Project {
   status ProjectStatus @default(ACTIVE)
 
   /// Text viditelný klientem v portálu — co se právě děje, co je potřeba od klienta.
-  portalNote     String?
-  /// Web, který pro klienta předěláváme. Jeho stávající, ještě neupravený.
-  currentSiteUrl String?
-  /// Náš nový web — staging nebo už spuštěná verze.
-  previewUrl     String?
+  portalNote String?
+  /// Náš nový web — staging nebo už spuštěná verze. Stávající web klienta je
+  /// u klienta samotného, protože se nemění po zakázkách.
+  previewUrl String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

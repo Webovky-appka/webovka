@@ -81,7 +81,6 @@ export default async function PortalPage(props: {
           currentPhaseName: current?.name ?? null,
           currentPhaseDueDate: current?.dueDate ?? null,
           portalNote: link.project.portalNote,
-          currentSiteUrl: link.project.currentSiteUrl,
           previewUrl: link.project.previewUrl,
           currentPhaseApproved: approvals.some(
             (approval) => approval.phaseName === current?.name,

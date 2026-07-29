@@ -8,6 +8,7 @@ import {
   revokePortalLink,
   type PortalLinkState,
 } from "@/app/actions/portal";
+import { CopyButton } from "@/components/copy-button";
 import { FormError } from "@/components/field";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -89,15 +90,29 @@ export function PortalLinkPanel({
       )}
 
       {state?.url && state.pin ? (
-        <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+        <div className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
           <p className="text-xs font-medium text-amber-900">
-            Zkopírujte a pošlete klientovi. PIN už znovu neuvidíte.
+            Pošlete klientovi. PIN už znovu neuvidíte — v databázi je jen jeho
+            hash.
           </p>
-          <p className="break-all rounded bg-white px-2 py-1.5 font-mono text-xs text-slate-800">
-            {state.url}
-          </p>
-          <p className="rounded bg-white px-2 py-1.5 font-mono text-lg tracking-widest text-slate-900">
-            {state.pin}
+
+          <div className="space-y-1">
+            <p className="break-all rounded bg-white px-2 py-1.5 font-mono text-xs text-slate-800">
+              {state.url}
+            </p>
+            <CopyButton value={state.url} label="Zkopírovat odkaz" />
+          </div>
+
+          <div className="space-y-1">
+            <p className="rounded bg-white px-2 py-1.5 font-mono text-lg tracking-widest text-slate-900">
+              {state.pin}
+            </p>
+            <CopyButton value={state.pin} label="Zkopírovat PIN" />
+          </div>
+
+          <p className="text-xs text-amber-800">
+            Odkaz a PIN pošlete radši jinou cestou — když se e-mail dostane
+            k nesprávné osobě, samotný odkaz jí bez PINu nepomůže.
           </p>
         </div>
       ) : null}

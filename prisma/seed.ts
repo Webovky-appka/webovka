@@ -20,7 +20,6 @@ type DemoProject = {
   name: string;
   completedPhases: number;
   portalNote?: string;
-  currentSiteUrl?: string;
   previewUrl?: string;
 };
 
@@ -50,7 +49,6 @@ async function createDemoProject(clientId: string, demo: DemoProject) {
       clientId,
       name: demo.name,
       portalNote: demo.portalNote,
-      currentSiteUrl: demo.currentSiteUrl,
       previewUrl: demo.previewUrl,
     },
     select: { id: true },
@@ -119,6 +117,7 @@ async function main() {
         contactPerson: "Jana Nováková",
         email: "jana@pekarnaunovaku.cz",
         phone: "+420 601 234 567",
+        website: "https://pekarnaunovaku.cz",
         status: ClientStatus.ACTIVE,
         internalNote:
           "Platí spolehlivě, ale podklady dodává pozdě. Připomínat týden dopředu.",
@@ -130,7 +129,6 @@ async function main() {
       completedPhases: 2,
       portalNote:
         "Připravili jsme grafický návrh homepage. Prosíme o schválení, nebo o připomínky, ať můžeme začít programovat.",
-      currentSiteUrl: "https://pekarnaunovaku.cz",
       previewUrl: "https://navrh.pekarnaunovaku.cz",
     });
 
@@ -140,6 +138,7 @@ async function main() {
         contactPerson: "Petr Dvořák",
         email: "info@truhlarstvidvorak.cz",
         phone: "+420 774 111 222",
+        website: "https://truhlarstvidvorak.cz",
         status: ClientStatus.ACTIVE,
       },
     });
@@ -149,7 +148,6 @@ async function main() {
       completedPhases: 2,
       portalNote:
         "Programujeme fotogalerii. Do konce týdne pošleme odkaz na testovací verzi.",
-      currentSiteUrl: "https://truhlarstvidvorak.cz",
     });
 
     await prisma.message.createMany({

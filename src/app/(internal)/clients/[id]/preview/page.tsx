@@ -34,7 +34,6 @@ export default async function PortalPreviewPage(props: {
           id: true,
           name: true,
           portalNote: true,
-          currentSiteUrl: true,
           previewUrl: true,
           phases: { orderBy: { position: "asc" } },
         },
@@ -126,7 +125,6 @@ export default async function PortalPreviewPage(props: {
             currentPhaseName: current?.name ?? null,
             currentPhaseDueDate: current?.dueDate ?? null,
             portalNote: project.portalNote,
-            currentSiteUrl: project.currentSiteUrl,
             previewUrl: project.previewUrl,
             currentPhaseApproved: approvals.some(
               (approval) => approval.phaseName === current?.name,

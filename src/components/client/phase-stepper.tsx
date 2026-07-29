@@ -36,6 +36,7 @@ export function PhaseStepper({
         return (
           <li key={phase.id} className="min-w-28 flex-1">
             <Link
+              scroll={false}
               href={phaseHref(phase.id)}
               aria-current={isViewed ? "step" : undefined}
               className={`block rounded-lg border px-2 py-2 transition ${

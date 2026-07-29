@@ -26,12 +26,14 @@ export function TaskEditPanel({
   task,
   clientId,
   projectId,
+  projectName,
   phases,
   closeHref,
 }: {
   task: EditedTask;
   clientId: string;
   projectId: string;
+  projectName: string;
   phases: { id: string; name: string }[];
   closeHref: string;
 }) {
@@ -43,7 +45,9 @@ export function TaskEditPanel({
   return (
     <section className="space-y-5 rounded-xl border border-slate-900 bg-white p-5 ring-1 ring-slate-900/10">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">Úprava úkolu</h2>
+        <h2 className="text-sm font-semibold text-slate-900">
+          Úprava úkolu — {projectName}
+        </h2>
         <Link
           href={closeHref}
           className="text-sm text-slate-500 transition hover:text-slate-900"
@@ -52,8 +56,9 @@ export function TaskEditPanel({
         </Link>
       </div>
 
-      <form action={formAction} className="space-y-4">
+      <form id="task-fields" action={formAction} className="space-y-4">
         <input type="hidden" name="taskId" value={task.id} />
+        <input type="hidden" name="closeHref" value={closeHref} />
 
         <Field label="Název" name="title" defaultValue={task.title} required />
 
@@ -101,14 +106,6 @@ export function TaskEditPanel({
         </div>
 
         <FormError message={state?.error} />
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
-        >
-          {pending ? "Ukládám…" : "Uložit úkol"}
-        </button>
       </form>
 
       <hr className="border-slate-100" />
@@ -119,6 +116,22 @@ export function TaskEditPanel({
         projectId={projectId}
         files={task.attachments}
       />
+
+      <hr className="border-slate-100" />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          form="task-fields"
+          disabled={pending}
+          className="rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+        >
+          {pending ? "Ukládám…" : "Uložit úkol"}
+        </button>
+        <span className="text-xs text-slate-500">
+          Uložením se panel zavře. Nahrané soubory se ukládají hned.
+        </span>
+      </div>
     </section>
   );
 }

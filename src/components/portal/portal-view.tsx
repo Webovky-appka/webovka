@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 
 import {
   approvePhase,
@@ -8,6 +8,7 @@ import {
   type PortalActionState,
 } from "@/app/actions/portal";
 import { FormError, inputClasses } from "@/components/field";
+import { SiteEmbed } from "@/components/site-embed";
 import { formatDateTime, formatDay, formatFileSize } from "@/lib/format";
 import { sortPhases, type PhaseLike } from "@/lib/phases";
 
@@ -19,7 +20,6 @@ type PortalData = {
   currentPhaseName: string | null;
   currentPhaseDueDate: Date | null;
   portalNote: string | null;
-  currentSiteUrl: string | null;
   previewUrl: string | null;
   currentPhaseApproved: boolean;
   approvals: { id: string; phaseName: string; createdAt: Date }[];
@@ -65,37 +65,11 @@ export function PortalView({
         </section>
       ) : null}
 
-      {data.previewUrl || data.currentSiteUrl ? (
+      {data.previewUrl ? (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="text-sm font-medium text-slate-900">Odkazy</h2>
 
-          {data.previewUrl ? (
-            <div>
-              <p className="text-xs text-slate-500">Nový web</p>
-              <a
-                href={data.previewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm break-all text-sky-700 underline hover:text-sky-900"
-              >
-                {data.previewUrl}
-              </a>
-            </div>
-          ) : null}
-
-          {data.currentSiteUrl ? (
-            <div>
-              <p className="text-xs text-slate-500">Stávající web</p>
-              <a
-                href={data.currentSiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm break-all text-sky-700 underline hover:text-sky-900"
-              >
-                {data.currentSiteUrl}
-              </a>
-            </div>
-          ) : null}
+          <SiteEmbed url={data.previewUrl!} title="Nový web" defaultOpen />
         </section>
       ) : null}
 
@@ -212,7 +186,10 @@ function PhaseProgress({
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-slate-900">
-          Aktuální fáze: {currentPhaseName ?? "—"}
+          Aktuální fáze:{" "}
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200 ring-inset">
+            {currentPhaseName ?? "—"}
+          </span>
         </h2>
         {dueDate ? (
           <p className="text-xs text-slate-500">
@@ -228,14 +205,16 @@ function PhaseProgress({
             <li key={item.id} className="min-w-16 flex-1">
               <div
                 className={`h-1.5 rounded-full ${
-                  item.completedAt !== null || isCurrent
-                    ? "bg-emerald-500"
-                    : "bg-slate-200"
+                  isCurrent
+                    ? "bg-amber-400"
+                    : item.completedAt !== null
+                      ? "bg-emerald-500"
+                      : "bg-slate-200"
                 }`}
               />
               <p
                 className={`mt-1.5 text-[11px] ${
-                  isCurrent ? "font-medium text-slate-900" : "text-slate-400"
+                  isCurrent ? "font-medium text-amber-700" : "text-slate-400"
                 }`}
               >
                 {item.name}
@@ -261,6 +240,7 @@ function ApprovalSection({
     PortalActionState,
     FormData
   >(approvePhase, undefined);
+  const [confirming, setConfirming] = useState(false);
 
   if (alreadyApproved || state?.success) {
     return (
@@ -287,28 +267,41 @@ function ApprovalSection({
 
       <FormError message={state?.error} />
 
-      <form
-        action={formAction}
-        className="mt-3"
-        onSubmit={(event) => {
-          if (
-            !window.confirm(
-              `Schválit fázi „${phaseName}“? Schválení potvrzuje, že současný stav odpovídá zadání.`,
-            )
-          ) {
-            event.preventDefault();
-          }
-        }}
-      >
-        <input type="hidden" name="token" value={token} />
+      {confirming ? (
+        <div className="mt-3 rounded-lg border border-emerald-300 bg-emerald-50 p-4">
+          <p className="text-sm text-emerald-900">
+            Schválením potvrzujete, že současný stav odpovídá zadání.
+            Zaznamenáme datum i čas.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <form action={formAction}>
+              <input type="hidden" name="token" value={token} />
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {pending ? "Ukládám…" : `Ano, schvaluji fázi ${phaseName}`}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="text-sm text-emerald-800 transition hover:text-emerald-950"
+            >
+              Zrušit
+            </button>
+          </div>
+        </div>
+      ) : (
         <button
-          type="submit"
-          disabled={pending}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60"
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
         >
-          {pending ? "Ukládám…" : "Schválit tuto fázi"}
+          Schválit tuto fázi
         </button>
-      </form>
+      )}
     </section>
   );
 }
