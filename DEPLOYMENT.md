@@ -105,7 +105,17 @@ Na Vercelu je souborový systém dočasný, takže `STORAGE_DRIVER=local` by
 znamenal tichou ztrátu nahraných souborů. V produkci musí být `blob`.
 
 1. Ve Vercel projektu otevřete Storage a vytvořte Blob store.
-2. Vercel do projektu sám přidá `BLOB_READ_WRITE_TOKEN`.
+2. Vercel do projektu přidá proměnné sám.
+
+Autorizace ke Blobu má dvě varianty a stačí jedna:
+
+- **`BLOB_STORE_ID`** plus `VERCEL_OIDC_TOKEN`, který Vercel dodává za běhu.
+  Tohle nastaví integrace Blobu sama a je to bezpečnější, protože OIDC token je
+  krátkodobý. Aplikace `storeId` předává, kdykoli tuhle proměnnou najde.
+- **`BLOB_READ_WRITE_TOKEN`**, dlouhodobý token ze nastavení Blob storu.
+  Použijte, jen když první varianta z nějakého důvodu nefunguje.
+
+Když nebude ani jedna, nahrávání příloh selže na chybějícím tokenu.
 
 ## 4. E-maily (Resend)
 
@@ -131,7 +141,8 @@ Bez `RESEND_API_KEY` aplikace funguje dál, notifikace se jen zapíšou do logu.
 | `SESSION_SECRET`        | ano     | `openssl rand -base64 32`, jiný než lokální   |
 | `APP_URL`               | ano     | Veřejná URL, např. `https://web-appka.cz`     |
 | `STORAGE_DRIVER`        | ano     | `blob`                                        |
-| `BLOB_READ_WRITE_TOKEN` | ano     | Doplní Vercel při vytvoření Blob store        |
+| `BLOB_STORE_ID`         | ano*    | Doplní Vercel při vytvoření Blob store        |
+| `BLOB_READ_WRITE_TOKEN` | ano*    | Alternativa k BLOB_STORE_ID, viz níže         |
 | `RESEND_API_KEY`        | ne      | API klíč z Resendu                            |
 | `MAIL_FROM`             | ne      | Odesílatel na ověřené doméně                  |
 | `NOTIFY_EMAILS`         | ne      | Komu chodí notifikace, oddělené čárkou        |
