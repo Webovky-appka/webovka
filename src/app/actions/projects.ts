@@ -7,7 +7,7 @@ import * as z from "zod";
 import { requireUser } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/events";
 import { notifyClientPhaseChanged } from "@/lib/notifications";
-import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
+import { PHASE_LABELS, PHASE_ORDER, activePhase } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export type ProjectFormState = { error?: string } | undefined;
@@ -77,55 +77,112 @@ export async function createProject(
   return undefined;
 }
 
-export async function changePhase(formData: FormData) {
+/**
+ * Ukončí fázi. Tohle je jediná akce, která posouvá zakázku dál — přepínání
+ * fází v UI je jen prohlížení a do komunikace se nezapisuje, protože by z ní
+ * dělalo nepřehledný seznam přepnutí.
+ */
+export async function completePhase(formData: FormData) {
   const user = await requireUser();
 
   const projectId = formData.get("projectId");
   const target = formData.get("phase");
 
   if (typeof projectId !== "string") return;
-  const toPhase = PHASE_ORDER.find((phase) => phase === target);
-  if (!toPhase) return;
+  const phase = PHASE_ORDER.find((value) => value === target);
+  if (!phase) return;
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: {
       id: true,
       clientId: true,
-      phase: true,
       name: true,
       portalNote: true,
       client: { select: { email: true } },
+      phaseCompletions: { select: { phase: true } },
     },
   });
-  if (!project || project.phase === toPhase) return;
+  if (!project) return;
+
+  const alreadyCompleted = project.phaseCompletions.some(
+    (completion) => completion.phase === phase,
+  );
+  if (alreadyCompleted) return;
+
+  const completedPhases = [
+    ...project.phaseCompletions.map((completion) => completion.phase),
+    phase,
+  ];
+  const nextPhase = activePhase(completedPhases);
 
   await prisma.$transaction([
+    prisma.phaseCompletion.create({
+      data: { projectId, phase, userId: user.id },
+    }),
     prisma.project.update({
       where: { id: projectId },
-      data: { phase: toPhase },
-    }),
-    prisma.phaseChange.create({
-      data: {
-        projectId,
-        fromPhase: project.phase,
-        toPhase,
-        userId: user.id,
-      },
+      data: { phase: nextPhase },
     }),
   ]);
 
   await logSystemEvent({
     clientId: project.clientId,
     projectId,
-    body: `${user.name} změnil fázi z „${PHASE_LABELS[project.phase]}“ na „${PHASE_LABELS[toPhase]}“.`,
+    body:
+      nextPhase === phase
+        ? `${user.name} ukončil fázi „${PHASE_LABELS[phase]}“. Zakázka je hotová.`
+        : `${user.name} ukončil fázi „${PHASE_LABELS[phase]}“. Zakázka pokračuje fází „${PHASE_LABELS[nextPhase]}“.`,
   });
 
   await notifyClientPhaseChanged({
     clientEmail: project.client.email,
     projectName: project.name,
-    phase: toPhase,
+    phase: nextPhase,
     portalNote: project.portalNote,
+  });
+
+  revalidatePath(`/clients/${project.clientId}`);
+  revalidatePath("/projects");
+}
+
+/** Vrátí ukončenou fázi zpět do práce, když se ukončila omylem nebo se něco vrátilo. */
+export async function reopenPhase(formData: FormData) {
+  const user = await requireUser();
+
+  const projectId = formData.get("projectId");
+  const target = formData.get("phase");
+
+  if (typeof projectId !== "string") return;
+  const phase = PHASE_ORDER.find((value) => value === target);
+  if (!phase) return;
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: {
+      clientId: true,
+      phaseCompletions: { select: { phase: true } },
+    },
+  });
+  if (!project) return;
+
+  const remaining = project.phaseCompletions
+    .map((completion) => completion.phase)
+    .filter((value) => value !== phase);
+
+  await prisma.$transaction([
+    prisma.phaseCompletion.deleteMany({ where: { projectId, phase } }),
+    prisma.project.update({
+      where: { id: projectId },
+      data: { phase: activePhase(remaining) },
+    }),
+  ]);
+
+  // Klientovi se to neposílá, je to interní korekce, ne posun zakázky.
+  await logSystemEvent({
+    clientId: project.clientId,
+    projectId,
+    body: `${user.name} vrátil fázi „${PHASE_LABELS[phase]}“ zpět do práce.`,
   });
 
   revalidatePath(`/clients/${project.clientId}`);

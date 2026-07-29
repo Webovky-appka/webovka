@@ -29,6 +29,26 @@ export function phaseIndex(phase: Phase): number {
   return PHASE_ORDER.indexOf(phase);
 }
 
+/**
+ * Aktivní fáze je první neukončená. Přepínání fází v UI je jen prohlížení,
+ * takže stav zakázky se odvozuje z toho, co je ukončené — ne z toho, na co se
+ * kdo právě kouká.
+ */
+export function activePhase(completedPhases: Phase[]): Phase {
+  const firstOpen = PHASE_ORDER.find(
+    (phase) => !completedPhases.includes(phase),
+  );
+  // Když je hotové všechno, zakázka zůstane na Live.
+  return firstOpen ?? PHASE_ORDER[PHASE_ORDER.length - 1];
+}
+
+export function isPhaseCompleted(
+  phase: Phase,
+  completedPhases: Phase[],
+): boolean {
+  return completedPhases.includes(phase);
+}
+
 export function nextPhase(phase: Phase): Phase | null {
   return PHASE_ORDER[phaseIndex(phase) + 1] ?? null;
 }

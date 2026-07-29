@@ -111,6 +111,19 @@ async function main() {
           done: phaseRank(template.phase) < phaseRank(project.phase),
         })),
       });
+
+      // Fáze před aktuální jsou ukončené, jinak by se zakázka tvářila jako na začátku.
+      const finishedPhases = [
+        Phase.BRIEF,
+        Phase.DESIGN,
+        Phase.BUILD,
+        Phase.REVIEW,
+        Phase.LIVE,
+      ].filter((phase) => phaseRank(phase) < phaseRank(project.phase));
+
+      await prisma.phaseCompletion.createMany({
+        data: finishedPhases.map((phase) => ({ projectId: project.id, phase })),
+      });
     }
 
     await prisma.message.createMany({
