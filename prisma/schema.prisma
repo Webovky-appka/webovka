@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  DEVELOPER
+}
+
+/// Fáze zakázky. Pořadí odpovídá průchodu zakázky.
+enum Phase {
+  BRIEF
+  DESIGN
+  BUILD
+  REVIEW
+  LIVE
+}
+
+enum ClientStatus {
+  LEAD
+  ACTIVE
+  DONE
+  ARCHIVED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  DONE
+  ARCHIVED
+}
+
+/// Kdo záznam v komunikaci vytvořil. SYSTEM = automatická událost.
+enum AuthorType {
+  USER
+  CLIENT
+  SYSTEM
+}
+
+enum MessageKind {
+  NOTE
+  EMAIL
+  CALL
+  MEETING
+  PORTAL_FEEDBACK
+  SYSTEM_EVENT
+}
+
+enum AttachmentKind {
+  CONTRACT
+  LOGO
+  INVOICE
+  SCREENSHOT
+  OTHER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  messages     Message[]
+  phaseChanges PhaseChange[]
+  attachments  Attachment[]
+}
+
+model Client {
+  id            String       @id @default(cuid())
+  companyName   String
+  contactPerson String?
+  email         String?
+  phone         String?
+  website       String?
+  /// Interní poznámky. Do klientského portálu se nikdy nepropisují.
+  internalNote  String?
+  status        ClientStatus @default(LEAD)
+  archivedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  projects    Project[]
+  messages    Message[]
+  attachments Attachment[]
+
+  @@index([status])
+}
+
+model Project {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  name   String
+  phase  Phase         @default(BRIEF)
+  status ProjectStatus @default(ACTIVE)
+
+  /// Text viditelný klientem v portálu — co se právě děje, co je potřeba od klienta.
+  portalNote String?
+  /// Odkaz na staging nebo náhled webu, zobrazuje se v portálu.
+  previewUrl String?
+  /// Očekávaný termín aktuální fáze. Prázdné = v portálu se nezobrazuje.
+  dueDate    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks        Task[]
+  messages     Message[]
+  phaseChanges PhaseChange[]
+  approvals    Approval[]
+  portalLinks  PortalLink[]
+  attachments  Attachment[]
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Message {
+  id       String  @id @default(cuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// Vazba na konkrétní zakázku. Prázdné = obecná komunikace s klientem.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  authorType AuthorType
+  /// Vyplněno jen když authorType = USER.
+  authorId   String?
+  author     User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  kind       MessageKind @default(NOTE)
+  body       String
+  pinned     Boolean     @default(false)
+  editedAt   DateTime?
+  createdAt  DateTime    @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([projectId])
+}
+
+model Task {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  phase       Phase
+  done        Boolean   @default(false)
+  doneAt      DateTime?
+  dueDate     DateTime?
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId, phase, position])
+}
+
+/// Šablona úkolů. Kopíruje se do Task při zakládání nové zakázky.
+model TaskTemplate {
+  id       String @id @default(cuid())
+  title    String
+  phase    Phase
+  position Int    @default(0)
+
+  @@index([phase, position])
+}
+
+model PhaseChange {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  fromPhase Phase
+  toPhase   Phase
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+/// Schválení fáze klientem. Oddělené od Message, protože musí být dohledatelné.
+model Approval {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  phase        Phase
+  /// IP adresa, ze které klient schválil. Slouží jako doklad.
+  ipAddress    String?
+  portalLinkId String?
+  /// Odkaz na přílohu se "zmrazeným" screenshotem schváleného stavu.
+  snapshotId   String?
+  createdAt    DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+model PortalLink {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 hash tokenu z URL. Deterministický, aby šel dohledat podle odkazu.
+  tokenHash String  @unique
+  /// Argon2 hash PIN kódu. PIN se v čitelné podobě nikde neukládá.
+  pinHash   String
+
+  active         Boolean   @default(true)
+  expiresAt      DateTime?
+  lastVisitedAt  DateTime?
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([projectId])
+}
+
+model Attachment {
+  id       String  @id @default(cuid())
+  clientId String
+  client   Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  filename String
+  kind     AttachmentKind @default(OTHER)
+  mimeType String
+  size     Int
+  /// Cesta v úložišti. Nikdy se nevydává klientovi přímo.
+  storageKey String
+  /// Zpřístupněno klientovi v portálu.
+  visibleInPortal Boolean @default(false)
+
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([projectId])
+}
