@@ -4,6 +4,24 @@ const dateFormatter = new Intl.DateTimeFormat("cs-CZ", {
   year: "numeric",
 });
 
+/**
+ * Termíny jsou kalendářní dny, ne okamžiky. Z formuláře přicházejí jako
+ * "2026-07-26" a JavaScript je parsuje na midnight v UTC, takže se musí i
+ * formátovat v UTC — jinak by se v zónách za UTC zobrazil den zpátky.
+ */
+const dayFormatter = new Intl.DateTimeFormat("cs-CZ", {
+  day: "numeric",
+  month: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const dayShortFormatter = new Intl.DateTimeFormat("cs-CZ", {
+  day: "numeric",
+  month: "numeric",
+  timeZone: "UTC",
+});
+
 const dateTimeFormatter = new Intl.DateTimeFormat("cs-CZ", {
   day: "numeric",
   month: "numeric",
@@ -12,8 +30,19 @@ const dateTimeFormatter = new Intl.DateTimeFormat("cs-CZ", {
   minute: "2-digit",
 });
 
+/** Pro okamžiky — kdy byl záznam vytvořen, kdy klient schválil. */
 export function formatDate(value: Date | null | undefined): string {
   return value ? dateFormatter.format(value) : "—";
+}
+
+/** Pro kalendářní dny — termíny zadané ve formuláři. */
+export function formatDay(value: Date | null | undefined): string {
+  return value ? dayFormatter.format(value) : "—";
+}
+
+/** Kalendářní den bez roku, pro úsporu místa na nástěnce úkolů. */
+export function formatDayShort(value: Date | null | undefined): string {
+  return value ? dayShortFormatter.format(value) : "—";
 }
 
 export function formatDateTime(value: Date | null | undefined): string {
@@ -62,6 +91,41 @@ export function isContactStale(
 ): boolean {
   if (!value) return false;
   return Date.now() - value.getTime() > days * 86_400_000;
+}
+
+/** Aplikace je česká, takže "dnes" se řídí českým kalendářem, ne zónou serveru. */
+const BUSINESS_TIME_ZONE = "Europe/Prague";
+
+const businessDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: BUSINESS_TIME_ZONE,
+});
+
+/** Kalendářní den v UTC jako číslo YYYYMMDD, aby šly dny porovnat bez zóny. */
+function utcDayNumber(value: Date): number {
+  return (
+    value.getUTCFullYear() * 10_000 +
+    (value.getUTCMonth() + 1) * 100 +
+    value.getUTCDate()
+  );
+}
+
+/** Dnešní den podle českého kalendáře, ve stejném tvaru YYYYMMDD. */
+function businessTodayNumber(now: Date): number {
+  // en-CA dává YYYY-MM-DD, takže stačí odstranit pomlčky.
+  return Number(businessDayFormatter.format(now).replaceAll("-", ""));
+}
+
+/**
+ * Termín je po datu. Termíny z formuláře jsou uložené jako midnight v UTC,
+ * takže se čte jejich UTC den; "dnes" se naopak bere podle českého kalendáře.
+ * Porovnávání v zóně serveru by v jiné zóně hlásilo "po termínu" o den dřív.
+ */
+export function isOverdue(dueDate: Date | null | undefined): boolean {
+  if (!dueDate) return false;
+  return utcDayNumber(dueDate) < businessTodayNumber(new Date());
 }
 
 export function formatFileSize(bytes: number): string {

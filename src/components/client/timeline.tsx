@@ -1,4 +1,5 @@
 import { AuthorType, MessageKind } from "@prisma/client";
+import Link from "next/link";
 
 import { deleteMessage, togglePinMessage } from "@/app/actions/messages";
 import { formatDateTime } from "@/lib/format";
@@ -37,9 +38,12 @@ export type TimelineMessage = {
 export function Timeline({
   messages,
   currentUserId,
+  editHrefBase,
 }: {
   messages: TimelineMessage[];
   currentUserId: string;
+  /** Základ odkazu pro otevření úpravy zápisu, už včetně "?". */
+  editHrefBase: string;
 }) {
   if (messages.length === 0) {
     return (
@@ -68,7 +72,9 @@ export function Timeline({
               ? "Systém"
               : (message.author?.name ?? "Neznámý");
 
-        const canDelete =
+        // Vlastní zápis smí autor upravit i smazat. Připomínky klienta
+        // a systémové události zůstávají jako doklad.
+        const canEdit =
           message.authorType === AuthorType.USER &&
           message.authorId === currentUserId;
 
@@ -98,6 +104,14 @@ export function Timeline({
                   <span className="text-slate-400">{message.project.name}</span>
                 </>
               ) : null}
+              {message.editedAt ? (
+                <span
+                  className="text-slate-400"
+                  title={`Upraveno ${formatDateTime(message.editedAt)}`}
+                >
+                  upraveno
+                </span>
+              ) : null}
               {message.pinned ? (
                 <span className="text-amber-700">připnuto</span>
               ) : null}
@@ -118,16 +132,25 @@ export function Timeline({
                 </button>
               </form>
 
-              {canDelete ? (
-                <form action={deleteMessage}>
-                  <input type="hidden" name="messageId" value={message.id} />
-                  <button
-                    type="submit"
-                    className="text-slate-400 transition hover:text-red-600"
+              {canEdit ? (
+                <>
+                  <Link
+                    href={`${editHrefBase}&message=${message.id}`}
+                    className="text-slate-500 transition hover:text-slate-900"
                   >
-                    Smazat
-                  </button>
-                </form>
+                    Upravit
+                  </Link>
+
+                  <form action={deleteMessage}>
+                    <input type="hidden" name="messageId" value={message.id} />
+                    <button
+                      type="submit"
+                      className="text-slate-400 transition hover:text-red-600"
+                    >
+                      Smazat
+                    </button>
+                  </form>
+                </>
               ) : null}
             </div>
           </li>

@@ -196,9 +196,14 @@ model Approval {
   /// IP adresa, ze které klient schválil. Slouží jako doklad.
   ipAddress    String?
   portalLinkId String?
-  /// Odkaz na přílohu se "zmrazeným" screenshotem schváleného stavu.
-  snapshotId   String?
-  createdAt    DateTime @default(now())
+
+  /// Co přesně měl klient v portálu před sebou, když schvaloval. Zmrazené
+  /// při schválení, aby pozdější úprava poznámky nebo náhledu nezměnila doklad.
+  /// Není to obrázek webu — na ten bychom potřebovali službu na screenshoty.
+  snapshotNote       String?
+  snapshotPreviewUrl String?
+
+  createdAt DateTime @default(now())
 
   @@index([projectId, createdAt])
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Phase } from "@prisma/client";
+import Link from "next/link";
 import { useActionState } from "react";
 
 import {
@@ -14,17 +15,26 @@ import { PHASE_LABELS } from "@/lib/phases";
 
 export function PortalLinkPanel({
   projectId,
+  previewHref,
   portalLink,
   approvals,
 }: {
   projectId: string;
+  previewHref: string;
   portalLink: {
     id: string;
     expiresAt: Date | null;
     lastVisitedAt: Date | null;
     createdAt: Date;
   } | null;
-  approvals: { id: string; phase: Phase; createdAt: Date }[];
+  approvals: {
+    id: string;
+    phase: Phase;
+    createdAt: Date;
+    ipAddress: string | null;
+    snapshotNote: string | null;
+    snapshotPreviewUrl: string | null;
+  }[];
 }) {
   const [state, formAction, pending] = useActionState<
     PortalLinkState,
@@ -33,12 +43,22 @@ export function PortalLinkPanel({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium text-slate-900">Odkaz pro klienta</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Klient se dostane ke svému projektu odkazem a šestimístným PIN kódem.
-          Účet nepotřebuje.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-medium text-slate-900">
+            Odkaz pro klienta
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Klient se dostane ke svému projektu odkazem a šestimístným PIN
+            kódem. Účet nepotřebuje.
+          </p>
+        </div>
+        <Link
+          href={previewHref}
+          className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+        >
+          Zobrazit jako klient
+        </Link>
       </div>
 
       {portalLink ? (
@@ -126,18 +146,48 @@ export function PortalLinkPanel({
           <h3 className="text-sm font-medium text-slate-900">
             Schválení klientem
           </h3>
-          <ul className="space-y-1 text-xs">
+          <ul className="space-y-1.5 text-xs">
             {approvals.map((approval) => (
               <li
                 key={approval.id}
-                className="flex justify-between gap-2 rounded bg-emerald-50 px-2 py-1.5"
+                className="rounded bg-emerald-50 px-2 py-1.5"
               >
-                <span className="text-emerald-900">
-                  {PHASE_LABELS[approval.phase]}
-                </span>
-                <span className="text-emerald-700">
-                  {formatDateTime(approval.createdAt)}
-                </span>
+                <div className="flex justify-between gap-2">
+                  <span className="font-medium text-emerald-900">
+                    {PHASE_LABELS[approval.phase]}
+                  </span>
+                  <span className="text-emerald-700">
+                    {formatDateTime(approval.createdAt)}
+                  </span>
+                </div>
+
+                {/* Zmrazený stav je doklad, co klient v tu chvíli viděl. */}
+                {approval.snapshotNote || approval.snapshotPreviewUrl ? (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-emerald-700 hover:text-emerald-900">
+                      Co klient schvaloval
+                    </summary>
+                    <div className="mt-1 space-y-1 text-emerald-900">
+                      {approval.snapshotNote ? (
+                        <p className="whitespace-pre-wrap">
+                          {approval.snapshotNote}
+                        </p>
+                      ) : (
+                        <p className="text-emerald-700">Bez poznámky.</p>
+                      )}
+                      {approval.snapshotPreviewUrl ? (
+                        <p className="break-all">
+                          Náhled: {approval.snapshotPreviewUrl}
+                        </p>
+                      ) : null}
+                      {approval.ipAddress ? (
+                        <p className="text-emerald-700">
+                          IP: {approval.ipAddress}
+                        </p>
+                      ) : null}
+                    </div>
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>

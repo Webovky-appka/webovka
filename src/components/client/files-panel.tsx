@@ -1,7 +1,7 @@
 "use client";
 
 import { AttachmentKind } from "@prisma/client";
-import { useActionState, useRef } from "react";
+import { useActionState, useRef, useState } from "react";
 
 import {
   deleteAttachment,
@@ -28,17 +28,27 @@ export type FileRow = {
   visibleInPortal: boolean;
   createdAt: Date;
   uploadedBy: { name: string } | null;
+  /** Prázdné = soubor patří klientovi obecně, ne konkrétní zakázce. */
+  project: { id: string; name: string } | null;
 };
 
 export function FilesPanel({
   clientId,
   projectId,
+  projectName,
   files,
 }: {
   clientId: string;
   projectId: string;
+  projectName: string;
   files: FileRow[];
 }) {
+  // Soubory zůstávají u klienta, protože smlouvy a loga se sdílejí mezi
+  // zakázkami. Filtr slouží k rychlému zúžení na vybranou zakázku.
+  const [onlyThisProject, setOnlyThisProject] = useState(false);
+  const visibleFiles = onlyThisProject
+    ? files.filter((file) => file.project?.id === projectId)
+    : files;
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<
     AttachmentState,
@@ -108,20 +118,39 @@ export function FilesPanel({
 
         <FormError message={state?.error} />
         <p className="text-xs text-slate-500">
-          Nejvýše 25 MB. Obrázky, PDF, ZIP, dokumenty Wordu a Excelu.
+          Nejvýše 25 MB. Obrázky, PDF, ZIP, dokumenty Wordu a Excelu. Soubor se
+          uloží k zakázce {projectName}, ale zůstane vidět u celého klienta.
         </p>
       </form>
 
-      {files.length === 0 ? (
+      {files.length > 0 ? (
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={onlyThisProject}
+            onChange={(event) => setOnlyThisProject(event.target.checked)}
+            className="size-4 rounded border-slate-300"
+          />
+          Jen soubory zakázky {projectName}
+        </label>
+      ) : null}
+
+      {visibleFiles.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-          <p className="font-medium text-slate-900">Zatím žádný soubor</p>
+          <p className="font-medium text-slate-900">
+            {onlyThisProject
+              ? `K zakázce ${projectName} není žádný soubor`
+              : "Zatím žádný soubor"}
+          </p>
           <p className="mt-1 text-sm text-slate-500">
-            Smlouvy, loga, faktury a screenshoty schválených verzí.
+            {onlyThisProject
+              ? "Zrušte filtr a uvidíte soubory celého klienta."
+              : "Smlouvy, loga, faktury a screenshoty schválených verzí."}
           </p>
         </div>
       ) : (
         <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {files.map((file) => (
+          {visibleFiles.map((file) => (
             <li
               key={file.id}
               className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
@@ -137,6 +166,8 @@ export function FilesPanel({
                   {KIND_LABELS[file.kind]} · {formatFileSize(file.size)} ·{" "}
                   {formatDate(file.createdAt)}
                   {file.uploadedBy ? ` · ${file.uploadedBy.name}` : ""}
+                  {" · "}
+                  {file.project ? file.project.name : "bez zakázky"}
                 </p>
               </div>
 

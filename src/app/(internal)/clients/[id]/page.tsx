@@ -1,22 +1,24 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Phase, ProjectStatus } from "@prisma/client";
+import { AuthorType, Phase, ProjectStatus } from "@prisma/client";
 
 import { setProjectStatus } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
 import { DeleteClientPanel } from "@/components/client/delete-client-panel";
 import { FilesPanel } from "@/components/client/files-panel";
+import { MessageEditPanel } from "@/components/client/message-edit-panel";
 import { MessageForm } from "@/components/client/message-form";
 import { PhaseStepper } from "@/components/client/phase-stepper";
 import { ProjectPortalForm } from "@/components/client/project-portal-form";
 import { TaskBoard } from "@/components/client/task-board";
+import { TaskEditPanel } from "@/components/client/task-edit-panel";
 import { Timeline } from "@/components/client/timeline";
 import { NewProjectForm } from "@/components/client/new-project-form";
 import { PortalLinkPanel } from "@/components/client/portal-link-panel";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
-import { formatDate } from "@/lib/format";
+import { formatDay } from "@/lib/format";
 import { PHASE_ORDER } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
@@ -47,11 +49,21 @@ export async function generateMetadata(props: {
 
 export default async function ClientDetailPage(props: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ project?: string; tab?: string }>;
+  searchParams: Promise<{
+    project?: string;
+    tab?: string;
+    task?: string;
+    message?: string;
+  }>;
 }) {
   const user = await requireUser();
   const { id } = await props.params;
-  const { project: projectParam, tab: tabParam } = await props.searchParams;
+  const {
+    project: projectParam,
+    tab: tabParam,
+    task: taskParam,
+    message: messageParam,
+  } = await props.searchParams;
 
   const client = await prisma.client.findUnique({
     where: { id },
@@ -102,7 +114,10 @@ export default async function ClientDetailPage(props: {
         prisma.attachment.findMany({
           where: { clientId: client.id },
           orderBy: { createdAt: "desc" },
-          include: { uploadedBy: { select: { name: true } } },
+          include: {
+            uploadedBy: { select: { name: true } },
+            project: { select: { id: true, name: true } },
+          },
         }),
       ])
     : [[], [], [], null, []];
@@ -125,6 +140,19 @@ export default async function ClientDetailPage(props: {
     params.set("tab", tab);
     return `/clients/${client!.id}?${params.toString()}`;
   }
+
+  // Úkol i zápis se upravují v panelu, který se otevírá parametrem v URL.
+  const editedTask = taskParam
+    ? (tasks.find((task) => task.id === taskParam) ?? null)
+    : null;
+  const editedMessage = messageParam
+    ? (messages.find(
+        (message) =>
+          message.id === messageParam &&
+          message.authorType === AuthorType.USER &&
+          message.authorId === user.id,
+      ) ?? null)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -190,7 +218,7 @@ export default async function ClientDetailPage(props: {
                 </h2>
                 <p className="text-xs text-slate-500">
                   {selectedProject.dueDate
-                    ? `Termín fáze: ${formatDate(selectedProject.dueDate)}`
+                    ? `Termín fáze: ${formatDay(selectedProject.dueDate)}`
                     : "Bez termínu"}
                   {selectedProject.status !== ProjectStatus.ACTIVE
                     ? ` · ${selectedProject.status === ProjectStatus.DONE ? "dokončená" : "archivovaná"}`
@@ -229,26 +257,47 @@ export default async function ClientDetailPage(props: {
 
           {activeTab === "communication" ? (
             <div className="space-y-4">
-              <MessageForm
-                clientId={client.id}
-                projectId={selectedProject.id}
+              {editedMessage ? (
+                <MessageEditPanel
+                  message={editedMessage}
+                  closeHref={tabHref("communication")}
+                />
+              ) : (
+                <MessageForm
+                  clientId={client.id}
+                  projectId={selectedProject.id}
+                />
+              )}
+              <Timeline
+                messages={messages}
+                currentUserId={user.id}
+                editHrefBase={tabHref("communication")}
               />
-              <Timeline messages={messages} currentUserId={user.id} />
             </div>
           ) : null}
 
           {activeTab === "tasks" ? (
-            <TaskBoard
-              projectId={selectedProject.id}
-              currentPhase={selectedProject.phase}
-              tasks={tasks}
-            />
+            <div className="space-y-4">
+              {editedTask ? (
+                <TaskEditPanel
+                  task={editedTask}
+                  closeHref={tabHref("tasks")}
+                />
+              ) : null}
+              <TaskBoard
+                projectId={selectedProject.id}
+                currentPhase={selectedProject.phase}
+                tasks={tasks}
+                taskHrefBase={`${tabHref("tasks")}`}
+              />
+            </div>
           ) : null}
 
           {activeTab === "files" ? (
             <FilesPanel
               clientId={client.id}
               projectId={selectedProject.id}
+              projectName={selectedProject.name}
               files={files}
             />
           ) : null}
@@ -268,6 +317,7 @@ export default async function ClientDetailPage(props: {
                 <hr className="border-slate-100" />
                 <PortalLinkPanel
                   projectId={selectedProject.id}
+                  previewHref={`/clients/${client.id}/preview?project=${selectedProject.id}`}
                   portalLink={
                     portalLink
                       ? {
@@ -282,6 +332,9 @@ export default async function ClientDetailPage(props: {
                     id: approval.id,
                     phase: approval.phase,
                     createdAt: approval.createdAt,
+                    ipAddress: approval.ipAddress,
+                    snapshotNote: approval.snapshotNote,
+                    snapshotPreviewUrl: approval.snapshotPreviewUrl,
                   }))}
                 />
               </section>

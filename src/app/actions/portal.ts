@@ -221,6 +221,8 @@ async function loadPortalLink(token: string) {
           clientId: true,
           name: true,
           phase: true,
+          portalNote: true,
+          previewUrl: true,
           client: { select: { companyName: true } },
         },
       },
@@ -264,6 +266,10 @@ export async function approvePhase(
       phase: link.project.phase,
       ipAddress: await clientIpAddress(),
       portalLinkId: link.id,
+      // Zmrazíme, co měl klient před sebou. Pozdější úprava poznámky ani
+      // náhledu už tímto dokladem nepohne.
+      snapshotNote: link.project.portalNote,
+      snapshotPreviewUrl: link.project.previewUrl,
     },
   });
 

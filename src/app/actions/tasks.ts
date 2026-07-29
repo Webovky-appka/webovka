@@ -72,6 +72,58 @@ export async function toggleTask(formData: FormData) {
   revalidatePath("/projects");
 }
 
+export type TaskFormState = { error?: string } | undefined;
+
+export async function updateTask(
+  _prevState: TaskFormState,
+  formData: FormData,
+): Promise<TaskFormState> {
+  await requireUser();
+
+  const taskId = formData.get("taskId");
+  const title = formData.get("title");
+  const description = formData.get("description");
+  const dueDate = formData.get("dueDate");
+  const phaseValue = formData.get("phase");
+
+  if (typeof taskId !== "string" || taskId === "") {
+    return { error: "Chybí identifikátor úkolu." };
+  }
+  if (typeof title !== "string" || title.trim() === "") {
+    return { error: "Název úkolu nesmí být prázdný." };
+  }
+
+  const phase = PHASE_ORDER.find((value) => value === phaseValue);
+  if (!phase) return { error: "Neplatná fáze." };
+
+  let parsedDueDate: Date | null = null;
+  if (typeof dueDate === "string" && dueDate.trim() !== "") {
+    parsedDueDate = new Date(dueDate);
+    if (Number.isNaN(parsedDueDate.getTime())) {
+      return { error: "Neplatné datum." };
+    }
+  }
+
+  const task = await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      title: title.trim(),
+      description:
+        typeof description === "string" && description.trim() !== ""
+          ? description.trim()
+          : null,
+      dueDate: parsedDueDate,
+      phase,
+    },
+    select: { projectId: true },
+  });
+
+  const clientId = await clientIdForProject(task.projectId);
+  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/projects");
+  return undefined;
+}
+
 export async function deleteTask(formData: FormData) {
   await requireUser();
 

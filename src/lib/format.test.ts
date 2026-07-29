@@ -1,6 +1,30 @@
 import { describe, expect, it } from "vitest";
 
-import { isContactStale, pluralCs, unfinishedTasksPhrase } from "./format";
+import {
+  formatDay,
+  formatDayShort,
+  isContactStale,
+  isOverdue,
+  pluralCs,
+  unfinishedTasksPhrase,
+} from "./format";
+
+/**
+ * Datum z formuláře typu "2026-07-26" JavaScript parsuje na midnight v UTC.
+ * Tyhle testy hlídají, že se takový den nikde neposune o jeden zpět nebo
+ * dopředu podle zóny, ve které běží server.
+ */
+function dayFromInput(value: string): Date {
+  return new Date(value);
+}
+
+/** Dnešní den českého kalendáře jako midnight v UTC, spočítaný nezávisle. */
+function czechTodayAsUtcMidnight(): Date {
+  const czechToday = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Europe/Prague",
+  });
+  return new Date(`${czechToday}T00:00:00.000Z`);
+}
 
 describe("skloňování podle počtu", () => {
   it("používá jednotné číslo pro jednu položku", () => {
@@ -25,6 +49,51 @@ describe("věta o nehotových úkolech", () => {
     expect(unfinishedTasksPhrase(1)).toBe("zbývá 1 nehotový úkol");
     expect(unfinishedTasksPhrase(3)).toBe("zbývají 3 nehotové úkoly");
     expect(unfinishedTasksPhrase(7)).toBe("zbývá 7 nehotových úkolů");
+  });
+});
+
+describe("zobrazení kalendářního dne", () => {
+  it("zobrazí den, který uživatel zadal, nezávisle na zóně serveru", () => {
+    expect(formatDay(dayFromInput("2026-07-26"))).toBe("26. 7. 2026");
+    expect(formatDayShort(dayFromInput("2026-07-26"))).toBe("26. 7.");
+  });
+
+  it("nepřeteče na jiný měsíc u prvního a posledního dne", () => {
+    expect(formatDay(dayFromInput("2026-01-01"))).toBe("1. 1. 2026");
+    expect(formatDay(dayFromInput("2026-12-31"))).toBe("31. 12. 2026");
+  });
+
+  it("bez data vrací pomlčku", () => {
+    expect(formatDay(null)).toBe("—");
+    expect(formatDayShort(undefined)).toBe("—");
+  });
+});
+
+describe("termín po datu", () => {
+  const day = 86_400_000;
+
+  it("bez termínu nic nehlásí", () => {
+    expect(isOverdue(null)).toBe(false);
+    expect(isOverdue(undefined)).toBe(false);
+  });
+
+  it("dnešní termín není po termínu", () => {
+    expect(isOverdue(czechTodayAsUtcMidnight())).toBe(false);
+  });
+
+  it("zítřejší termín není po termínu", () => {
+    const tomorrow = new Date(czechTodayAsUtcMidnight().getTime() + day);
+    expect(isOverdue(tomorrow)).toBe(false);
+  });
+
+  it("včerejší termín je po termínu", () => {
+    const yesterday = new Date(czechTodayAsUtcMidnight().getTime() - day);
+    expect(isOverdue(yesterday)).toBe(true);
+  });
+
+  it("dávná i vzdálená data vyhodnotí správně", () => {
+    expect(isOverdue(dayFromInput("2020-01-01"))).toBe(true);
+    expect(isOverdue(dayFromInput("2099-01-01"))).toBe(false);
   });
 });
 
