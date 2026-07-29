@@ -168,14 +168,33 @@ odmítne s `redirect_uri_mismatch`.
 
 ### Přihlášení vyprší po 7 dnech
 
-Dokud aplikace zůstane v režimu **Testing**, ruší Google trvalý token po sedmi
-dnech a napojení se musí udělat znovu. Aplikace to pozná a napíše to. Trvale se
-tomu dá vyhnout dvěma způsoby:
+Sedmidenní limit **nemá nic společného s tím, že je aplikace veřejně dostupná
+na URL**. Řídí se výhradně stavem souhlasné obrazovky v Google Cloudu: dokud je
+v režimu **Testing**, Google trvalý token po týdnu zruší. Aplikace to pozná a
+napíše to. Trvale se tomu dá vyhnout třemi způsoby.
 
-- Publikovat aplikaci (**Publish app**). U rozsahu `gmail.send` po vás Google
-  bude chtít ověření, které zabere několik týdnů a vyžaduje doložit doménu.
-- Mít Google Workspace na vlastní doméně a udělat aplikaci **Internal**. Tam
-  token nevyprší.
+**Publikovat aplikaci a nechat ji ověřit.** V souhlasné obrazovce **Publish
+app**, pak požádat o ověření. `gmail.send` patří mezi *sensitive* rozsahy, ne
+*restricted*, takže se neplatí bezpečnostní audit u třetí strany — stačí
+ověření značky a posouzení aplikace. Google k tomu chce:
+
+- domovskou stránku na **vlastní doméně, kterou si ověříte v Search Console**,
+- zásady ochrany osobních údajů na téže doméně,
+- video, na kterém je vidět přihlášení a k čemu se rozsah používá.
+
+Zdržení bývá dny až týdny. **Na `*.vercel.app` to nejde** — ověřit se dá jen
+doména, kterou vlastníte, a `vercel.app` patří Vercelu. Do doby, než bude web
+na vlastní doméně, je tato cesta zavřená.
+
+**Google Workspace na vlastní doméně.** Aplikace nastavená jako **Internal**
+žádné ověření nepotřebuje a token nevyprší. Workspace je ale placený.
+
+**Vynechat OAuth a posílat přes SMTP s heslem aplikace.** Na účtu Google
+zapnete dvoufázové ověření, vytvoříte heslo aplikace a posíláte přes
+`smtp.gmail.com`. Nevyprší to, nic se neověřuje, odesílatel je vaše adresa a
+Gmail si kopii uloží do Odeslané pošty. Cenou je dlouhodobé heslo v proměnných
+prostředí místo tokenu a limit řádově 500 zpráv denně. Aplikace to dnes neumí,
+je to práce na pár hodin — řekněte, jestli to chcete přidat.
 
 Uložený token je v databázi zašifrovaný klíčem odvozeným ze `SESSION_SECRET`.
 Změna `SESSION_SECRET` tedy napojení zneplatní — udělá se znovu.

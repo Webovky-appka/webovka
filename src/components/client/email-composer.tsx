@@ -157,7 +157,7 @@ export function EmailComposer({
         <details open className="rounded-lg bg-slate-50 p-3">
           <summary className="cursor-pointer text-xs text-slate-600">
             Podklady o zakázce
-            {draft.source === "ai" ? " (poslané do OpenAI)" : " (nikam se neposlaly)"}
+            {draft.contextSent ? " (poslané do OpenAI)" : " (nikam se neposlaly)"}
           </summary>
           <pre className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap text-slate-700">
             {draft.context}

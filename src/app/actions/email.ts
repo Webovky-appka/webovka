@@ -27,6 +27,8 @@ export type EmailState =
       subject?: string;
       body?: string;
       source?: "ai" | "template";
+      /** Jestli podklady opravdu odešly do OpenAI. Tvrzení v UI musí být pravdivé. */
+      contextSent?: boolean;
     }
   | undefined;
 
@@ -155,13 +157,21 @@ function readProjectId(formData: FormData): string | null {
  * případě se zadání nezpracuje a UI to musí říct.
  */
 export async function composeEmail(
-  _prevState: EmailState,
+  prevState: EmailState,
   formData: FormData,
 ): Promise<EmailState> {
   await requireUser();
 
+  // Hotový návrh se nesmí ztratit, když se pak jen načtou podklady nebo když
+  // chybí zadání — jinak by uživatel přišel o rozepsaný text.
+  const keepDraft = {
+    subject: prevState?.subject,
+    body: prevState?.body,
+    source: prevState?.source,
+  };
+
   const projectId = readProjectId(formData);
-  if (!projectId) return { error: "Chybí identifikátor zakázky." };
+  if (!projectId) return { ...keepDraft, error: "Chybí identifikátor zakázky." };
 
   const instruction = String(formData.get("instruction") ?? "").trim();
   const toneValue = formData.get("tone");
@@ -171,13 +181,15 @@ export async function composeEmail(
     projectId,
     formData.get("includeInternal") === "on",
   );
-  if (!loaded) return { error: "Zakázka nenalezena." };
+  if (!loaded) return { ...keepDraft, error: "Zakázka nenalezena." };
 
   const context = buildContextText(loaded.context);
 
   // Načtení podkladů je samostatný krok, aby šlo zkontrolovat, co se posílá
   // do modelu, ještě než se tam něco pošle.
-  if (formData.get("mode") === "context") return { context };
+  if (formData.get("mode") === "context") {
+    return { ...keepDraft, context, contextSent: false };
+  }
 
   const fallback = templateDraft(loaded.context, signature());
 
@@ -186,13 +198,16 @@ export async function composeEmail(
       ...fallback,
       context,
       source: "template",
+      contextSent: false,
     };
   }
 
   if (instruction === "") {
     return {
+      ...keepDraft,
       error: "Napište, co má e-mail klientovi říct.",
       context,
+      contextSent: false,
     };
   }
 
@@ -203,10 +218,12 @@ export async function composeEmail(
 
   if ("error" in result) {
     // Návrh ze šablony je lepší než prázdná obrazovka, ale chybu je vidět.
+    // Podklady už do OpenAI odešly, i když model neodpověděl.
     return {
       ...fallback,
       context,
       source: "template",
+      contextSent: true,
       error: `${result.error} Zobrazený návrh je ze šablony.`,
     };
   }
@@ -215,6 +232,7 @@ export async function composeEmail(
     ...splitDraft(result.text, fallback.subject),
     context,
     source: "ai",
+    contextSent: true,
   };
 }
 
