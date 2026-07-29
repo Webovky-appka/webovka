@@ -4,6 +4,7 @@ import { AuthorType, MessageKind } from "@prisma/client";
 
 import { PortalView } from "@/components/portal/portal-view";
 import { requireUser } from "@/lib/auth";
+import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -32,10 +33,10 @@ export default async function PortalPreviewPage(props: {
         select: {
           id: true,
           name: true,
-          phase: true,
           portalNote: true,
+          currentSiteUrl: true,
           previewUrl: true,
-          dueDate: true,
+          phases: { orderBy: { position: "asc" } },
         },
       },
     },
@@ -49,11 +50,13 @@ export default async function PortalPreviewPage(props: {
 
   if (!project) notFound();
 
+  const current = activePhase(sortPhases(project.phases));
+
   const [approvals, feedback, files] = await Promise.all([
     prisma.approval.findMany({
       where: { projectId: project.id },
       orderBy: { createdAt: "desc" },
-      select: { id: true, phase: true, createdAt: true },
+      select: { id: true, phaseName: true, createdAt: true },
     }),
     prisma.message.findMany({
       where: {
@@ -119,12 +122,14 @@ export default async function PortalPreviewPage(props: {
             token: "",
             companyName: client.companyName,
             projectName: project.name,
-            phase: project.phase,
+            phases: project.phases,
+            currentPhaseName: current?.name ?? null,
+            currentPhaseDueDate: current?.dueDate ?? null,
             portalNote: project.portalNote,
+            currentSiteUrl: project.currentSiteUrl,
             previewUrl: project.previewUrl,
-            dueDate: project.dueDate,
             currentPhaseApproved: approvals.some(
-              (approval) => approval.phase === project.phase,
+              (approval) => approval.phaseName === current?.name,
             ),
             approvals,
             feedback,

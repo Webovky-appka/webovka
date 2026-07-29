@@ -1,13 +1,17 @@
-import type { Phase } from "@prisma/client";
+import { phaseBadgeClasses } from "@/lib/phases";
 
-import { PHASE_BADGE_CLASSES, PHASE_LABELS } from "@/lib/phases";
-
-export function PhaseBadge({ phase }: { phase: Phase }) {
+export function PhaseBadge({
+  name,
+  state = "active",
+}: {
+  name: string;
+  state?: "done" | "active" | "future";
+}) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${PHASE_BADGE_CLASSES[phase]}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${phaseBadgeClasses(state)}`}
     >
-      {PHASE_LABELS[phase]}
+      {name}
     </span>
   );
 }

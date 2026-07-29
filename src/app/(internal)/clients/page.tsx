@@ -4,6 +4,7 @@ import { ClientStatus, type Prisma } from "@prisma/client";
 import { PhaseBadge } from "@/components/phase-badge";
 import { requireUser } from "@/lib/auth";
 import { formatRelativeDays, pluralCs } from "@/lib/format";
+import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -46,7 +47,14 @@ export default async function ClientsPage(props: {
     include: {
       projects: {
         orderBy: { updatedAt: "desc" },
-        select: { id: true, name: true, phase: true },
+        select: {
+          id: true,
+          name: true,
+          phases: {
+            orderBy: { position: "asc" },
+            select: { id: true, name: true, position: true, completedAt: true },
+          },
+        },
       },
       messages: {
         orderBy: { createdAt: "desc" },
@@ -133,9 +141,12 @@ export default async function ClientsPage(props: {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {client.projects.slice(0, 2).map((project) => (
-                    <PhaseBadge key={project.id} phase={project.phase} />
-                  ))}
+                  {client.projects.slice(0, 2).map((project) => {
+                    const current = activePhase(sortPhases(project.phases));
+                    return current ? (
+                      <PhaseBadge key={project.id} name={current.name} />
+                    ) : null;
+                  })}
                   {client.projects.length > 2 ? (
                     <span className="text-xs text-slate-400">
                       +{client.projects.length - 2}

@@ -1,6 +1,5 @@
 "use client";
 
-import type { Phase } from "@prisma/client";
 import Link from "next/link";
 import { useActionState } from "react";
 
@@ -11,7 +10,6 @@ import {
 } from "@/app/actions/portal";
 import { FormError } from "@/components/field";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { PHASE_LABELS } from "@/lib/phases";
 
 export function PortalLinkPanel({
   projectId,
@@ -29,7 +27,7 @@ export function PortalLinkPanel({
   } | null;
   approvals: {
     id: string;
-    phase: Phase;
+    phaseName: string;
     createdAt: Date;
     ipAddress: string | null;
     snapshotNote: string | null;
@@ -154,7 +152,7 @@ export function PortalLinkPanel({
               >
                 <div className="flex justify-between gap-2">
                   <span className="font-medium text-emerald-900">
-                    {PHASE_LABELS[approval.phase]}
+                    {approval.phaseName}
                   </span>
                   <span className="text-emerald-700">
                     {formatDateTime(approval.createdAt)}

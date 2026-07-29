@@ -8,6 +8,8 @@ import * as z from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+import { createProjectWithPhases } from "./projects";
+
 const optionalText = z
   .string()
   .trim()
@@ -57,29 +59,12 @@ export async function createClient(
 
   const { projectName, ...clientData } = parsed.data;
 
-  // Úkoly nové zakázky se předvyplní ze šablony, ať se nezakládá prázdná nástěnka.
-  const templates = await prisma.taskTemplate.findMany({
-    orderBy: [{ phase: "asc" }, { position: "asc" }],
+  const client = await prisma.client.create({
+    data: { ...clientData, status: ClientStatus.ACTIVE },
   });
 
-  const client = await prisma.client.create({
-    data: {
-      ...clientData,
-      status: ClientStatus.ACTIVE,
-      projects: {
-        create: {
-          name: projectName,
-          tasks: {
-            create: templates.map((template) => ({
-              title: template.title,
-              phase: template.phase,
-              position: template.position,
-            })),
-          },
-        },
-      },
-    },
-  });
+  // Fáze i úkoly se předvyplní z předlohy, ať zakázka nezačíná prázdná.
+  await createProjectWithPhases(client.id, projectName);
 
   revalidatePath("/projects");
   revalidatePath("/clients");

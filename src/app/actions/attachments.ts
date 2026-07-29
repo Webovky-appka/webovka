@@ -23,6 +23,7 @@ export async function uploadAttachment(
   const clientId = formData.get("clientId");
   const projectId = formData.get("projectId");
   const kindValue = formData.get("kind");
+  const taskId = formData.get("taskId");
   const file = formData.get("file");
 
   if (typeof clientId !== "string" || clientId === "") {
@@ -49,7 +50,9 @@ export async function uploadAttachment(
   await prisma.attachment.create({
     data: {
       clientId,
-      projectId: typeof projectId === "string" && projectId !== "" ? projectId : null,
+      projectId:
+        typeof projectId === "string" && projectId !== "" ? projectId : null,
+      taskId: typeof taskId === "string" && taskId !== "" ? taskId : null,
       filename: file.name,
       kind,
       mimeType: file.type,

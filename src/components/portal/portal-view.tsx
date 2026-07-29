@@ -1,6 +1,5 @@
 "use client";
 
-import type { Phase } from "@prisma/client";
 import { useActionState } from "react";
 
 import {
@@ -10,18 +9,20 @@ import {
 } from "@/app/actions/portal";
 import { FormError, inputClasses } from "@/components/field";
 import { formatDateTime, formatDay, formatFileSize } from "@/lib/format";
-import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
+import { sortPhases, type PhaseLike } from "@/lib/phases";
 
 type PortalData = {
   token: string;
   companyName: string;
   projectName: string;
-  phase: Phase;
+  phases: PhaseLike[];
+  currentPhaseName: string | null;
+  currentPhaseDueDate: Date | null;
   portalNote: string | null;
+  currentSiteUrl: string | null;
   previewUrl: string | null;
-  dueDate: Date | null;
   currentPhaseApproved: boolean;
-  approvals: { id: string; phase: Phase; createdAt: Date }[];
+  approvals: { id: string; phaseName: string; createdAt: Date }[];
   feedback: { id: string; body: string; createdAt: Date }[];
   files: { id: string; filename: string; size: number }[];
 };
@@ -47,7 +48,11 @@ export function PortalView({
         </h1>
       </header>
 
-      <PhaseProgress phase={data.phase} dueDate={data.dueDate} />
+      <PhaseProgress
+        phases={data.phases}
+        currentPhaseName={data.currentPhaseName}
+        dueDate={data.currentPhaseDueDate}
+      />
 
       {data.portalNote ? (
         <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -60,17 +65,37 @@ export function PortalView({
         </section>
       ) : null}
 
-      {data.previewUrl ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-medium text-slate-900">Náhled webu</h2>
-          <a
-            href={data.previewUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 inline-block text-sm break-all text-sky-700 underline hover:text-sky-900"
-          >
-            {data.previewUrl}
-          </a>
+      {data.previewUrl || data.currentSiteUrl ? (
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-medium text-slate-900">Odkazy</h2>
+
+          {data.previewUrl ? (
+            <div>
+              <p className="text-xs text-slate-500">Nový web</p>
+              <a
+                href={data.previewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm break-all text-sky-700 underline hover:text-sky-900"
+              >
+                {data.previewUrl}
+              </a>
+            </div>
+          ) : null}
+
+          {data.currentSiteUrl ? (
+            <div>
+              <p className="text-xs text-slate-500">Stávající web</p>
+              <a
+                href={data.currentSiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm break-all text-sky-700 underline hover:text-sky-900"
+              >
+                {data.currentSiteUrl}
+              </a>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -97,14 +122,14 @@ export function PortalView({
 
       {readOnly ? (
         <ReadOnlyActions
-          phase={data.phase}
+          phaseName={data.currentPhaseName}
           alreadyApproved={data.currentPhaseApproved}
         />
       ) : (
         <>
           <ApprovalSection
             token={data.token}
-            phase={data.phase}
+            phaseName={data.currentPhaseName}
             alreadyApproved={data.currentPhaseApproved}
           />
           <FeedbackSection token={data.token} />
@@ -124,7 +149,7 @@ export function PortalView({
                 className="flex flex-wrap justify-between gap-2 rounded-lg bg-emerald-50 px-3 py-2"
               >
                 <span className="text-emerald-900">
-                  Schváleno: {PHASE_LABELS[approval.phase]}
+                  Schváleno: {approval.phaseName}
                 </span>
                 <span className="text-xs text-emerald-700">
                   {formatDateTime(approval.createdAt)}
@@ -151,10 +176,10 @@ export function PortalView({
 
 /** Místo funkčních akcí jen popis toho, co by klient mohl udělat. */
 function ReadOnlyActions({
-  phase,
+  phaseName,
   alreadyApproved,
 }: {
-  phase: Phase;
+  phaseName: string | null;
   alreadyApproved: boolean;
 }) {
   return (
@@ -162,8 +187,8 @@ function ReadOnlyActions({
       <h2 className="text-sm font-medium text-slate-900">Akce klienta</h2>
       <p className="mt-1 text-sm text-slate-600">
         {alreadyApproved
-          ? `Fázi „${PHASE_LABELS[phase]}“ už klient schválil.`
-          : `Klient tady vidí tlačítko pro schválení fáze „${PHASE_LABELS[phase]}“ a formulář pro připomínku.`}
+          ? `Fázi „${phaseName ?? ""}“ už klient schválil.`
+          : `Klient tady vidí tlačítko pro schválení fáze „${phaseName ?? ""}“ a formulář pro připomínku.`}
       </p>
       <p className="mt-2 text-xs text-slate-500">
         V náhledu jsou obě akce vypnuté, aby nešlo schválit fázi za klienta.
@@ -173,19 +198,21 @@ function ReadOnlyActions({
 }
 
 function PhaseProgress({
-  phase,
+  phases,
+  currentPhaseName,
   dueDate,
 }: {
-  phase: Phase;
+  phases: PhaseLike[];
+  currentPhaseName: string | null;
   dueDate: Date | null;
 }) {
-  const currentIndex = PHASE_ORDER.indexOf(phase);
+  const ordered = sortPhases(phases);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-slate-900">
-          Aktuální fáze: {PHASE_LABELS[phase]}
+          Aktuální fáze: {currentPhaseName ?? "—"}
         </h2>
         {dueDate ? (
           <p className="text-xs text-slate-500">
@@ -195,24 +222,27 @@ function PhaseProgress({
       </div>
 
       <ol className="mt-4 flex gap-1.5">
-        {PHASE_ORDER.map((item, index) => (
-          <li key={item} className="flex-1">
-            <div
-              className={`h-1.5 rounded-full ${
-                index <= currentIndex ? "bg-emerald-500" : "bg-slate-200"
-              }`}
-            />
-            <p
-              className={`mt-1.5 text-[11px] ${
-                index === currentIndex
-                  ? "font-medium text-slate-900"
-                  : "text-slate-400"
-              }`}
-            >
-              {PHASE_LABELS[item]}
-            </p>
-          </li>
-        ))}
+        {ordered.map((item) => {
+          const isCurrent = item.name === currentPhaseName;
+          return (
+            <li key={item.id} className="min-w-16 flex-1">
+              <div
+                className={`h-1.5 rounded-full ${
+                  item.completedAt !== null || isCurrent
+                    ? "bg-emerald-500"
+                    : "bg-slate-200"
+                }`}
+              />
+              <p
+                className={`mt-1.5 text-[11px] ${
+                  isCurrent ? "font-medium text-slate-900" : "text-slate-400"
+                }`}
+              >
+                {item.name}
+              </p>
+            </li>
+          );
+        })}
       </ol>
     </section>
   );
@@ -220,11 +250,11 @@ function PhaseProgress({
 
 function ApprovalSection({
   token,
-  phase,
+  phaseName,
   alreadyApproved,
 }: {
   token: string;
-  phase: Phase;
+  phaseName: string | null;
   alreadyApproved: boolean;
 }) {
   const [state, formAction, pending] = useActionState<
@@ -236,7 +266,7 @@ function ApprovalSection({
     return (
       <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
         <p className="text-sm font-medium text-emerald-900">
-          Fázi „{PHASE_LABELS[phase]}“ jste schválili.
+          Fázi „{phaseName}“ jste schválili.
         </p>
         <p className="mt-1 text-sm text-emerald-800">
           {state?.success ?? "Děkujeme, pokračujeme v práci."}
@@ -248,7 +278,7 @@ function ApprovalSection({
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
       <h2 className="text-sm font-medium text-slate-900">
-        Schválení fáze „{PHASE_LABELS[phase]}“
+        Schválení fáze „{phaseName}“
       </h2>
       <p className="mt-1 text-sm text-slate-600">
         Pokud je vše v pořádku, potvrďte prosím schválení. Zaznamenáme datum
@@ -263,7 +293,7 @@ function ApprovalSection({
         onSubmit={(event) => {
           if (
             !window.confirm(
-              `Schválit fázi „${PHASE_LABELS[phase]}“? Schválení potvrzuje, že současný stav odpovídá zadání.`,
+              `Schválit fázi „${phaseName}“? Schválení potvrzuje, že současný stav odpovídá zadání.`,
             )
           ) {
             event.preventDefault();

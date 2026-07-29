@@ -3,76 +3,51 @@
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
-import { PHASE_ORDER } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
-async function clientIdForProject(projectId: string): Promise<string | null> {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    select: { clientId: true },
+export type TaskFormState = { error?: string } | undefined;
+
+async function clientIdForTask(taskId: string): Promise<string | null> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { project: { select: { clientId: true } } },
   });
-  return project?.clientId ?? null;
+  return task?.project.clientId ?? null;
 }
 
 export async function createTask(formData: FormData) {
   await requireUser();
 
-  const projectId = formData.get("projectId");
+  const phaseId = formData.get("phaseId");
   const title = formData.get("title");
-  const phaseValue = formData.get("phase");
 
-  if (typeof projectId !== "string" || typeof title !== "string") return;
+  if (typeof phaseId !== "string" || typeof title !== "string") return;
   if (title.trim() === "") return;
 
-  const phase = PHASE_ORDER.find((value) => value === phaseValue);
+  const phase = await prisma.projectPhase.findUnique({
+    where: { id: phaseId },
+    select: { projectId: true, project: { select: { clientId: true } } },
+  });
   if (!phase) return;
 
   const last = await prisma.task.findFirst({
-    where: { projectId, phase },
+    where: { phaseId },
     orderBy: { position: "desc" },
     select: { position: true },
   });
 
   await prisma.task.create({
     data: {
-      projectId,
+      projectId: phase.projectId,
+      phaseId,
       title: title.trim(),
-      phase,
       position: (last?.position ?? -1) + 1,
     },
   });
 
-  const clientId = await clientIdForProject(projectId);
-  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
 }
-
-export async function toggleTask(formData: FormData) {
-  await requireUser();
-
-  const taskId = formData.get("taskId");
-  if (typeof taskId !== "string") return;
-
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
-    select: { done: true, projectId: true },
-  });
-  if (!task) return;
-
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      done: !task.done,
-      doneAt: task.done ? null : new Date(),
-    },
-  });
-
-  const clientId = await clientIdForProject(task.projectId);
-  if (clientId) revalidatePath(`/clients/${clientId}`);
-  revalidatePath("/projects");
-}
-
-export type TaskFormState = { error?: string } | undefined;
 
 export async function updateTask(
   _prevState: TaskFormState,
@@ -84,7 +59,7 @@ export async function updateTask(
   const title = formData.get("title");
   const description = formData.get("description");
   const dueDate = formData.get("dueDate");
-  const phaseValue = formData.get("phase");
+  const phaseId = formData.get("phaseId");
 
   if (typeof taskId !== "string" || taskId === "") {
     return { error: "Chybí identifikátor úkolu." };
@@ -92,9 +67,9 @@ export async function updateTask(
   if (typeof title !== "string" || title.trim() === "") {
     return { error: "Název úkolu nesmí být prázdný." };
   }
-
-  const phase = PHASE_ORDER.find((value) => value === phaseValue);
-  if (!phase) return { error: "Neplatná fáze." };
+  if (typeof phaseId !== "string" || phaseId === "") {
+    return { error: "Chybí fáze." };
+  }
 
   let parsedDueDate: Date | null = null;
   if (typeof dueDate === "string" && dueDate.trim() !== "") {
@@ -104,7 +79,23 @@ export async function updateTask(
     }
   }
 
-  const task = await prisma.task.update({
+  // Fáze musí patřit té samé zakázce, jinak by úkol přeskočil k jinému klientovi.
+  const [task, phase] = await Promise.all([
+    prisma.task.findUnique({
+      where: { id: taskId },
+      select: { projectId: true },
+    }),
+    prisma.projectPhase.findUnique({
+      where: { id: phaseId },
+      select: { projectId: true, project: { select: { clientId: true } } },
+    }),
+  ]);
+  if (!task || !phase) return { error: "Úkol nebo fáze neexistuje." };
+  if (task.projectId !== phase.projectId) {
+    return { error: "Fáze patří jiné zakázce." };
+  }
+
+  await prisma.task.update({
     where: { id: taskId },
     data: {
       title: title.trim(),
@@ -113,15 +104,38 @@ export async function updateTask(
           ? description.trim()
           : null,
       dueDate: parsedDueDate,
-      phase,
+      phaseId,
     },
-    select: { projectId: true },
   });
 
-  const clientId = await clientIdForProject(task.projectId);
-  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
   return undefined;
+}
+
+export async function toggleTask(formData: FormData) {
+  await requireUser();
+
+  const taskId = formData.get("taskId");
+  if (typeof taskId !== "string") return;
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { done: true },
+  });
+  if (!task) return;
+
+  await prisma.task.update({
+    where: { id: taskId },
+    data: {
+      done: !task.done,
+      doneAt: task.done ? null : new Date(),
+    },
+  });
+
+  const clientId = await clientIdForTask(taskId);
+  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath("/projects");
 }
 
 export async function deleteTask(formData: FormData) {
@@ -130,15 +144,11 @@ export async function deleteTask(formData: FormData) {
   const taskId = formData.get("taskId");
   if (typeof taskId !== "string") return;
 
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
-    select: { projectId: true },
-  });
-  if (!task) return;
+  const clientId = await clientIdForTask(taskId);
+  if (!clientId) return;
 
   await prisma.task.delete({ where: { id: taskId } });
 
-  const clientId = await clientIdForProject(task.projectId);
-  if (clientId) revalidatePath(`/clients/${clientId}`);
+  revalidatePath(`/clients/${clientId}`);
   revalidatePath("/projects");
 }

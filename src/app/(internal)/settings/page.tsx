@@ -22,7 +22,10 @@ export default async function SettingsPage() {
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, email: true, role: true },
     }),
-    prisma.taskTemplate.findMany(),
+    prisma.phaseTemplate.findMany({
+      orderBy: { position: "asc" },
+      include: { tasks: { orderBy: { position: "asc" } } },
+    }),
   ]);
 
   return (
@@ -75,7 +78,9 @@ export default async function SettingsPage() {
       </div>
 
       <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-slate-900">Šablona úkolů</h2>
+        <h2 className="text-sm font-semibold text-slate-900">
+          Předloha nových zakázek
+        </h2>
         <TaskTemplatePanel templates={templates} />
       </section>
     </div>

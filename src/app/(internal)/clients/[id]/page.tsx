@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AuthorType, Phase, ProjectStatus } from "@prisma/client";
+import { AuthorType, ProjectStatus } from "@prisma/client";
 
-import { setProjectStatus } from "@/app/actions/projects";
+import { createPhase, setProjectStatus } from "@/app/actions/projects";
 import { ClientDetailForm } from "@/components/client/client-detail-form";
 import { DeleteClientPanel } from "@/components/client/delete-client-panel";
 import { FilesPanel } from "@/components/client/files-panel";
@@ -18,12 +18,10 @@ import { Timeline } from "@/components/client/timeline";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { requireUser } from "@/lib/auth";
-import { formatDay } from "@/lib/format";
-import { PHASE_ORDER, activePhase } from "@/lib/phases";
+import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 const TABS = [
-  { key: "tasks", label: "Úkoly" },
   { key: "communication", label: "Komunikace" },
   { key: "files", label: "Soubory" },
   { key: "settings", label: "Nastavení" },
@@ -75,11 +73,10 @@ export default async function ClientDetailPage(props: {
         select: {
           id: true,
           name: true,
-          phase: true,
           status: true,
           portalNote: true,
+          currentSiteUrl: true,
           previewUrl: true,
-          dueDate: true,
         },
       },
     },
@@ -87,15 +84,26 @@ export default async function ClientDetailPage(props: {
 
   if (!client) notFound();
 
-  const activeTab: TabKey = TABS.find((tab) => tab.key === tabParam)?.key ?? "tasks";
-
+  const activeTab = TABS.find((tab) => tab.key === tabParam)?.key ?? null;
   const selectedProject =
     client.projects.find((p) => p.id === projectParam) ?? client.projects[0];
 
-  const [tasks, messages, approvals, portalLink, files, completions] =
+  const [phases, tasks, messages, approvals, portalLink, files] =
     selectedProject
       ? await Promise.all([
-          prisma.task.findMany({ where: { projectId: selectedProject.id } }),
+          prisma.projectPhase.findMany({
+            where: { projectId: selectedProject.id },
+            orderBy: { position: "asc" },
+          }),
+          prisma.task.findMany({
+            where: { projectId: selectedProject.id },
+            include: {
+              attachments: {
+                orderBy: { createdAt: "asc" },
+                select: { id: true, filename: true, size: true },
+              },
+            },
+          }),
           prisma.message.findMany({
             where: { clientId: client.id },
             orderBy: { createdAt: "desc" },
@@ -121,42 +129,37 @@ export default async function ClientDetailPage(props: {
               project: { select: { id: true, name: true } },
             },
           }),
-          prisma.phaseCompletion.findMany({
-            where: { projectId: selectedProject.id },
-            select: { phase: true },
-          }),
         ])
-      : [[], [], [], null, [], []];
+      : [[], [], [], [], null, []];
 
-  const completedPhases = completions.map((completion) => completion.phase);
-  const currentPhase = activePhase(completedPhases);
+  const ordered = sortPhases(phases);
+  const current = activePhase(ordered);
 
   // Zobrazená fáze je jen věc URL — nepřepíná stav zakázky, jen co je vidět.
   const viewedPhase =
-    PHASE_ORDER.find((phase) => phase === phaseParam) ?? currentPhase;
+    ordered.find((phase) => phase.id === phaseParam) ?? current;
 
-  const unfinishedByPhase = PHASE_ORDER.reduce(
-    (acc, phase) => {
-      acc[phase] = tasks.filter(
-        (task) => task.phase === phase && !task.done,
-      ).length;
-      return acc;
-    },
-    {} as Record<Phase, number>,
+  const unfinishedByPhase = Object.fromEntries(
+    ordered.map((phase) => [
+      phase.id,
+      tasks.filter((task) => task.phaseId === phase.id && !task.done).length,
+    ]),
   );
 
   const doneCount = tasks.filter((task) => task.done).length;
 
   function buildHref(overrides: {
-    tab?: TabKey;
-    phase?: Phase;
+    tab?: TabKey | null;
+    phase?: string;
     task?: string;
     message?: string;
   }) {
     const params = new URLSearchParams();
     if (selectedProject) params.set("project", selectedProject.id);
-    params.set("tab", overrides.tab ?? activeTab);
-    params.set("phase", overrides.phase ?? viewedPhase);
+    const tab = overrides.tab === undefined ? activeTab : overrides.tab;
+    if (tab) params.set("tab", tab);
+    const phase = overrides.phase ?? viewedPhase?.id;
+    if (phase) params.set("phase", phase);
     if (overrides.task) params.set("task", overrides.task);
     if (overrides.message) params.set("message", overrides.message);
     return `/clients/${client!.id}?${params.toString()}`;
@@ -195,7 +198,7 @@ export default async function ClientDetailPage(props: {
                 .join(" · ") || "Bez kontaktních údajů"}
             </p>
           </div>
-          {selectedProject ? <PhaseBadge phase={currentPhase} /> : null}
+          {current ? <PhaseBadge name={current.name} /> : null}
         </div>
       </div>
 
@@ -217,7 +220,7 @@ export default async function ClientDetailPage(props: {
               {client.projects.map((project) => (
                 <Link
                   key={project.id}
-                  href={`/clients/${client.id}?project=${project.id}&tab=${activeTab}`}
+                  href={`/clients/${client.id}?project=${project.id}`}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                     project.id === selectedProject.id
                       ? "border-slate-900 bg-slate-900 text-white"
@@ -230,7 +233,77 @@ export default async function ClientDetailPage(props: {
             </nav>
           ) : null}
 
-          {/* Kontakt a portál jsou hned na začátku, ať je vidět všechno podstatné. */}
+          {/* Úkoly jsou první — kvůli nim se zakázka otevírá. */}
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-medium text-slate-900">
+                {selectedProject.name}
+              </h2>
+              <ProgressBar
+                done={doneCount}
+                total={tasks.length}
+                className="w-48"
+              />
+            </div>
+
+            <PhaseStepper
+              phases={ordered}
+              viewedPhaseId={viewedPhase?.id ?? ""}
+              activePhaseId={current?.id ?? null}
+              unfinishedByPhase={unfinishedByPhase}
+              phaseHref={(phaseId) => buildHref({ tab: null, phase: phaseId })}
+            />
+
+            <form action={createPhase} className="flex gap-2">
+              <input
+                type="hidden"
+                name="projectId"
+                value={selectedProject.id}
+              />
+              <input
+                name="name"
+                placeholder="Přidat fázi…"
+                aria-label="Přidat fázi k zakázce"
+                className="max-w-64 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:bg-slate-50"
+              >
+                Přidat fázi
+              </button>
+            </form>
+
+            {editedTask ? (
+              <TaskEditPanel
+                task={editedTask}
+                clientId={client.id}
+                projectId={selectedProject.id}
+                phases={ordered.map((phase) => ({
+                  id: phase.id,
+                  name: phase.name,
+                }))}
+                closeHref={buildHref({})}
+              />
+            ) : null}
+
+            {viewedPhase ? (
+              <PhaseTasks
+                phaseId={viewedPhase.id}
+                phaseName={viewedPhase.name}
+                phaseDueDate={viewedPhase.dueDate}
+                isCompleted={viewedPhase.completedAt !== null}
+                canDeletePhase={ordered.length > 1}
+                tasks={tasks.filter((task) => task.phaseId === viewedPhase.id)}
+                taskHrefBase={buildHref({})}
+              />
+            ) : (
+              <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
+                Zakázka nemá žádnou fázi. Přidejte první a můžete zadávat úkoly.
+              </p>
+            )}
+          </section>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
               <h2 className="text-sm font-semibold text-slate-900">Klient</h2>
@@ -244,8 +317,8 @@ export default async function ClientDetailPage(props: {
               <ProjectPortalForm
                 projectId={selectedProject.id}
                 portalNote={selectedProject.portalNote}
+                currentSiteUrl={selectedProject.currentSiteUrl}
                 previewUrl={selectedProject.previewUrl}
-                dueDate={selectedProject.dueDate}
               />
               <hr className="border-slate-100" />
               <PortalLinkPanel
@@ -263,7 +336,7 @@ export default async function ClientDetailPage(props: {
                 }
                 approvals={approvals.map((approval) => ({
                   id: approval.id,
-                  phase: approval.phase,
+                  phaseName: approval.phaseName,
                   createdAt: approval.createdAt,
                   ipAddress: approval.ipAddress,
                   snapshotNote: approval.snapshotNote,
@@ -272,37 +345,6 @@ export default async function ClientDetailPage(props: {
               />
             </section>
           </div>
-
-          <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-medium text-slate-900">
-                  {selectedProject.name}
-                </h2>
-                <p className="text-xs text-slate-500">
-                  {selectedProject.dueDate
-                    ? `Termín fáze: ${formatDay(selectedProject.dueDate)}`
-                    : "Bez termínu"}
-                  {selectedProject.status !== ProjectStatus.ACTIVE
-                    ? ` · ${selectedProject.status === ProjectStatus.DONE ? "dokončená" : "archivovaná"}`
-                    : ""}
-                </p>
-              </div>
-              <ProgressBar
-                done={doneCount}
-                total={tasks.length}
-                className="w-48"
-              />
-            </div>
-
-            <PhaseStepper
-              viewedPhase={viewedPhase}
-              activePhase={currentPhase}
-              completedPhases={completedPhases}
-              unfinishedByPhase={unfinishedByPhase}
-              phaseHref={(phase) => buildHref({ tab: "tasks", phase })}
-            />
-          </section>
 
           <nav className="flex gap-1 border-b border-slate-200">
             {TABS.map((tab) => (
@@ -319,21 +361,6 @@ export default async function ClientDetailPage(props: {
               </Link>
             ))}
           </nav>
-
-          {activeTab === "tasks" ? (
-            <div className="space-y-4">
-              {editedTask ? (
-                <TaskEditPanel task={editedTask} closeHref={buildHref({})} />
-              ) : null}
-              <PhaseTasks
-                projectId={selectedProject.id}
-                phase={viewedPhase}
-                isCompleted={completedPhases.includes(viewedPhase)}
-                tasks={tasks.filter((task) => task.phase === viewedPhase)}
-                taskHrefBase={buildHref({})}
-              />
-            </div>
-          ) : null}
 
           {activeTab === "communication" ? (
             <div className="space-y-4">
