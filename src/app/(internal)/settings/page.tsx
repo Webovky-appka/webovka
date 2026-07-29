@@ -1,8 +1,11 @@
 import { UserRole } from "@prisma/client";
 
+import { GmailPanel } from "@/components/settings/gmail-panel";
 import { PasswordForm } from "@/components/settings/password-form";
 import { TaskTemplatePanel } from "@/components/settings/task-template-panel";
+import { aiModel, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { googleAccountFor, isGoogleConfigured } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -14,10 +17,13 @@ const ROLE_LABELS: Record<UserRole, string> = {
   DEVELOPER: "Vývojář",
 };
 
-export default async function SettingsPage() {
+export default async function SettingsPage(props: {
+  searchParams: Promise<{ gmail?: string }>;
+}) {
   const currentUser = await requireUser();
+  const { gmail } = await props.searchParams;
 
-  const [users, templates] = await Promise.all([
+  const [users, templates, account] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, email: true, role: true },
@@ -26,6 +32,7 @@ export default async function SettingsPage() {
       orderBy: { position: "asc" },
       include: { tasks: { orderBy: { position: "asc" } } },
     }),
+    googleAccountFor(currentUser.id),
   ]);
 
   return (
@@ -75,6 +82,14 @@ export default async function SettingsPage() {
             ))}
           </ul>
         </section>
+
+        <GmailPanel
+          account={account}
+          configured={isGoogleConfigured()}
+          aiReady={isAiConfigured()}
+          aiModel={aiModel()}
+          result={typeof gmail === "string" ? gmail : undefined}
+        />
       </div>
 
       <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">

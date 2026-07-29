@@ -125,6 +125,61 @@ Když nebude ani jedna, nahrávání příloh selže na chybějícím tokenu.
 
 Bez `RESEND_API_KEY` aplikace funguje dál, notifikace se jen zapíšou do logu.
 
+## 4b. Návrhy e-mailů (OpenAI)
+
+Záložka **Napsat e-mail** u zakázky umí složit návrh e-mailu klientovi z toho,
+co je o zakázce v aplikaci.
+
+1. Na [platform.openai.com](https://platform.openai.com) vytvořte API klíč.
+2. Nabijte kredit — bez něj model vrací chybu o vyčerpaném limitu.
+3. Klíč vložte jako `OPENAI_API_KEY`. Jiný model než výchozí `gpt-4o-mini`
+   nastavíte přes `OPENAI_MODEL`.
+
+Bez klíče záložka funguje dál, jen návrh složí šablona z dat zakázky a vaše
+zadání nezpracuje. **Do OpenAI se posílají podklady o zakázce** — jméno klienta,
+adresa, fáze, nehotové úkoly a posledních pět zápisů z komunikace. Interní
+poznámka o klientovi se posílá jen po zaškrtnutí políčka. Před odesláním si lze
+podklady zobrazit tlačítkem Načíst podklady.
+
+## 4c. Odesílání z Gmailu (Google OAuth)
+
+Aby šel e-mail odeslat přímo z aplikace z vaší adresy, je potřeba vlastní OAuth
+klient v Googlu. Aplikace dostane pouze právo `gmail.send`, tedy odesílat —
+na čtení pošty oprávnění nemá.
+
+1. V [Google Cloud Console](https://console.cloud.google.com) založte projekt.
+2. **APIs & Services → Library** → zapněte **Gmail API**.
+3. **APIs & Services → OAuth consent screen**: typ **External**, doplňte název
+   aplikace a kontaktní e-mail.
+4. Do **Scopes** přidejte `https://www.googleapis.com/auth/gmail.send`.
+5. Do **Test users** přidejte svoji adresu i adresu kolegy. Bez toho vás Google
+   k přihlášení nepustí.
+6. **Credentials → Create credentials → OAuth client ID**, typ **Web
+   application**. Do **Authorized redirect URIs** vložte
+   `https://<vase-domena>/api/google/callback` a pro vývoj
+   `http://localhost:3001/api/google/callback`.
+7. Vzniklé Client ID a Client secret vložte jako `GOOGLE_CLIENT_ID` a
+   `GOOGLE_CLIENT_SECRET`.
+8. V aplikaci pak v **Nastavení → Odesílání e-mailů klientům** klikněte na
+   Napojit Gmail.
+
+Adresa v redirect URI musí přesně odpovídat `APP_URL`, jinak Google přihlášení
+odmítne s `redirect_uri_mismatch`.
+
+### Přihlášení vyprší po 7 dnech
+
+Dokud aplikace zůstane v režimu **Testing**, ruší Google trvalý token po sedmi
+dnech a napojení se musí udělat znovu. Aplikace to pozná a napíše to. Trvale se
+tomu dá vyhnout dvěma způsoby:
+
+- Publikovat aplikaci (**Publish app**). U rozsahu `gmail.send` po vás Google
+  bude chtít ověření, které zabere několik týdnů a vyžaduje doložit doménu.
+- Mít Google Workspace na vlastní doméně a udělat aplikaci **Internal**. Tam
+  token nevyprší.
+
+Uložený token je v databázi zašifrovaný klíčem odvozeným ze `SESSION_SECRET`.
+Změna `SESSION_SECRET` tedy napojení zneplatní — udělá se znovu.
+
 ## 5. Aplikace (Vercel)
 
 1. Naimportujte repozitář `jakubsovadina/web-appka`.
@@ -147,6 +202,10 @@ Bez `RESEND_API_KEY` aplikace funguje dál, notifikace se jen zapíšou do logu.
 | `MAIL_FROM`             | ne      | Odesílatel na ověřené doméně                  |
 | `NOTIFY_EMAILS`         | ne      | Komu chodí notifikace, oddělené čárkou        |
 | `MAIL_SIGNATURE`        | ne      | Podpis v e-mailech pro klienty                |
+| `OPENAI_API_KEY`        | ne      | Klíč pro návrhy e-mailů                       |
+| `OPENAI_MODEL`          | ne      | Jiný model, výchozí `gpt-4o-mini`             |
+| `GOOGLE_CLIENT_ID`      | ne      | OAuth klient pro odesílání z Gmailu           |
+| `GOOGLE_CLIENT_SECRET`  | ne      | Tajný klíč téhož OAuth klienta                |
 
 `APP_URL` musí odpovídat skutečné adrese — sestavují se z ní odkazy do
 klientského portálu. Se špatnou hodnotou dostane klient odkaz, který nefunguje.

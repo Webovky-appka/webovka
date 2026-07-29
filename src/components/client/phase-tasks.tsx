@@ -6,6 +6,11 @@ import {
   reopenPhase,
   updatePhaseDueDate,
 } from "@/app/actions/projects";
+import {
+  AutoSaveInput,
+  AutoSubmitDate,
+  SaveIndicator,
+} from "@/components/auto-save";
 import { DeletePhaseDialog } from "@/components/client/delete-phase-dialog";
 import { createTask, deleteTask, toggleTask } from "@/app/actions/tasks";
 import {
@@ -60,24 +65,20 @@ export function PhaseTasks({
     >
       <header className="space-y-3 border-b border-slate-100 px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Název se ukládá sám, po opuštění políčka nebo Enterem. */}
           <form
             key={`rename-${phaseId}`}
             action={renamePhase}
             className="flex flex-1 items-center gap-2"
           >
             <input type="hidden" name="phaseId" value={phaseId} />
-            <input
+            <AutoSaveInput
               name="name"
               defaultValue={phaseName}
-              aria-label="Název fáze"
-              className="min-w-40 flex-1 rounded-lg border border-transparent px-2 py-1 text-lg font-medium text-slate-900 outline-none hover:border-slate-200 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              ariaLabel="Název fáze"
+              className="min-w-40 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-lg font-medium text-slate-900 outline-none hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             />
-            <button
-              type="submit"
-              className="shrink-0 text-xs text-slate-500 transition hover:text-slate-900"
-            >
-              Přejmenovat
-            </button>
+            <SaveIndicator />
           </form>
 
           {isCompleted ? (
@@ -127,18 +128,15 @@ export function PhaseTasks({
           >
             <input type="hidden" name="phaseId" value={phaseId} />
             <label htmlFor={`due-${phaseId}`}>Termín fáze</label>
-            <input
+            <AutoSubmitDate
               id={`due-${phaseId}`}
-              type="date"
               name="dueDate"
               defaultValue={
                 phaseDueDate ? phaseDueDate.toISOString().slice(0, 10) : ""
               }
               className="rounded-lg border border-slate-200 px-2 py-1 outline-none focus:border-sky-500"
             />
-            <button type="submit" className="transition hover:text-slate-900">
-              Uložit
-            </button>
+            <SaveIndicator />
           </form>
 
           {canDeletePhase ? (

@@ -60,6 +60,26 @@ model User {
   messages       Message[]
   phasesFinished ProjectPhase[]
   attachments    Attachment[]
+  googleAccount  GoogleAccount?
+}
+
+/**
+ * Napojení účtu na Gmail, aby šlo posílat e-maily klientům z vlastní adresy.
+ * Refresh token je v databázi šifrovaný (src/lib/secrets.ts), access token se
+ * ukládá jen jako krátkodobá keška, aby se nemusel obnovovat při každém odeslání.
+ */
+model GoogleAccount {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  email        String
+  refreshToken String
+  accessToken  String?
+  expiresAt    DateTime?
+  scope        String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Client {

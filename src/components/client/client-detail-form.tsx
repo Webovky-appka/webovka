@@ -1,17 +1,9 @@
 "use client";
 
-import { ClientStatus } from "@prisma/client";
 import { useActionState } from "react";
 
 import { updateClient, type ClientFormState } from "@/app/actions/clients";
 import { Field, FormError, TextareaField } from "@/components/field";
-
-const STATUS_LABELS: Record<ClientStatus, string> = {
-  LEAD: "Poptávka",
-  ACTIVE: "Aktivní",
-  DONE: "Dokončeno",
-  ARCHIVED: "Archiv",
-};
 
 export function ClientDetailForm({
   client,
@@ -24,7 +16,6 @@ export function ClientDetailForm({
     phone: string | null;
     website: string | null;
     internalNote: string | null;
-    status: ClientStatus;
   };
 }) {
   const [state, formAction, pending] = useActionState<
@@ -62,30 +53,6 @@ export function ClientDetailForm({
           defaultValue={client.website}
           placeholder="https://"
         />
-      </div>
-
-      <div className="space-y-1.5">
-        <label
-          htmlFor="status"
-          className="block text-sm font-medium text-slate-700"
-        >
-          Stav klienta
-        </label>
-        <select
-          id="status"
-          name="status"
-          defaultValue={client.status}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:w-56"
-        >
-          {Object.values(ClientStatus).map((value) => (
-            <option key={value} value={value}>
-              {STATUS_LABELS[value]}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs text-slate-500">
-          Archiv klienta skryje z přehledů, data zůstanou zachovaná.
-        </p>
       </div>
 
       <TextareaField
