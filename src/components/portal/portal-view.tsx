@@ -9,7 +9,7 @@ import {
   type PortalActionState,
 } from "@/app/actions/portal";
 import { FormError, inputClasses } from "@/components/field";
-import { formatDate, formatDateTime, formatFileSize } from "@/lib/format";
+import { formatDateTime, formatDay, formatFileSize } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 
 type PortalData = {
@@ -26,7 +26,18 @@ type PortalData = {
   files: { id: string; filename: string; size: number }[];
 };
 
-export function PortalView({ data }: { data: PortalData }) {
+/**
+ * @param readOnly Náhled pro interní uživatele. Vykreslí totéž, co vidí klient,
+ * ale bez možnosti cokoli schválit nebo odeslat — z náhledu se nesmí dát
+ * omylem schválit fáze za klienta.
+ */
+export function PortalView({
+  data,
+  readOnly = false,
+}: {
+  data: PortalData;
+  readOnly?: boolean;
+}) {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">
       <header>
@@ -84,13 +95,21 @@ export function PortalView({ data }: { data: PortalData }) {
         </section>
       ) : null}
 
-      <ApprovalSection
-        token={data.token}
-        phase={data.phase}
-        alreadyApproved={data.currentPhaseApproved}
-      />
-
-      <FeedbackSection token={data.token} />
+      {readOnly ? (
+        <ReadOnlyActions
+          phase={data.phase}
+          alreadyApproved={data.currentPhaseApproved}
+        />
+      ) : (
+        <>
+          <ApprovalSection
+            token={data.token}
+            phase={data.phase}
+            alreadyApproved={data.currentPhaseApproved}
+          />
+          <FeedbackSection token={data.token} />
+        </>
+      )}
 
       {data.approvals.length > 0 || data.feedback.length > 0 ? (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
@@ -130,6 +149,29 @@ export function PortalView({ data }: { data: PortalData }) {
   );
 }
 
+/** Místo funkčních akcí jen popis toho, co by klient mohl udělat. */
+function ReadOnlyActions({
+  phase,
+  alreadyApproved,
+}: {
+  phase: Phase;
+  alreadyApproved: boolean;
+}) {
+  return (
+    <section className="rounded-xl border border-dashed border-slate-300 bg-white p-5">
+      <h2 className="text-sm font-medium text-slate-900">Akce klienta</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        {alreadyApproved
+          ? `Fázi „${PHASE_LABELS[phase]}“ už klient schválil.`
+          : `Klient tady vidí tlačítko pro schválení fáze „${PHASE_LABELS[phase]}“ a formulář pro připomínku.`}
+      </p>
+      <p className="mt-2 text-xs text-slate-500">
+        V náhledu jsou obě akce vypnuté, aby nešlo schválit fázi za klienta.
+      </p>
+    </section>
+  );
+}
+
 function PhaseProgress({
   phase,
   dueDate,
@@ -147,7 +189,7 @@ function PhaseProgress({
         </h2>
         {dueDate ? (
           <p className="text-xs text-slate-500">
-            Předpokládaný termín: {formatDate(dueDate)}
+            Předpokládaný termín: {formatDay(dueDate)}
           </p>
         ) : null}
       </div>

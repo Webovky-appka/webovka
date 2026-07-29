@@ -1,16 +1,21 @@
 import type { Phase, Task } from "@prisma/client";
+import Link from "next/link";
 
 import { createTask, deleteTask, toggleTask } from "@/app/actions/tasks";
+import { formatDayShort, isOverdue } from "@/lib/format";
 import { PHASE_LABELS, PHASE_ORDER } from "@/lib/phases";
 
 export function TaskBoard({
   projectId,
   currentPhase,
   tasks,
+  taskHrefBase,
 }: {
   projectId: string;
   currentPhase: Phase;
   tasks: Task[];
+  /** Základ odkazu pro otevření úpravy úkolu, už včetně "?". */
+  taskHrefBase: string;
 }) {
   return (
     <div className="grid gap-3 lg:grid-cols-5">
@@ -39,60 +44,96 @@ export function TaskBoard({
             </header>
 
             <ul className="flex-1 space-y-1 p-2">
-              {phaseTasks.map((task) => (
-                <li key={task.id} className="group flex items-start gap-2">
-                  <form action={toggleTask} className="pt-0.5">
-                    <input type="hidden" name="taskId" value={task.id} />
-                    <button
-                      type="submit"
-                      aria-label={
-                        task.done
-                          ? `Označit „${task.title}“ jako nehotové`
-                          : `Označit „${task.title}“ jako hotové`
-                      }
-                      className={`flex size-4 items-center justify-center rounded border transition ${
-                        task.done
-                          ? "border-emerald-500 bg-emerald-500 text-white"
-                          : "border-slate-300 hover:border-slate-400"
-                      }`}
+              {phaseTasks.map((task) => {
+                // Po termínu jsou jen nehotové úkoly, u hotových už to nezajímá.
+                const overdue = !task.done && isOverdue(task.dueDate);
+
+                return (
+                  <li key={task.id} className="group flex items-start gap-2">
+                    <form action={toggleTask} className="pt-0.5">
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <button
+                        type="submit"
+                        aria-label={
+                          task.done
+                            ? `Označit „${task.title}“ jako nehotové`
+                            : `Označit „${task.title}“ jako hotové`
+                        }
+                        className={`flex size-4 items-center justify-center rounded border transition ${
+                          task.done
+                            ? "border-emerald-500 bg-emerald-500 text-white"
+                            : "border-slate-300 hover:border-slate-400"
+                        }`}
+                      >
+                        {task.done ? (
+                          <svg
+                            viewBox="0 0 12 12"
+                            className="size-3"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            aria-hidden="true"
+                          >
+                            <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                          </svg>
+                        ) : null}
+                      </button>
+                    </form>
+
+                    <Link
+                      href={`${taskHrefBase}&task=${task.id}`}
+                      className="flex-1 text-left"
+                      title="Upravit úkol"
                     >
-                      {task.done ? (
-                        <svg
-                          viewBox="0 0 12 12"
-                          className="size-3"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <path d="M2.5 6.5l2.5 2.5 4.5-5" />
-                        </svg>
+                      <span
+                        className={`block text-sm leading-5 ${
+                          task.done
+                            ? "text-slate-400 line-through"
+                            : "text-slate-700 group-hover:text-slate-900"
+                        }`}
+                      >
+                        {task.title}
+                      </span>
+
+                      {task.dueDate || task.description ? (
+                        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          {task.dueDate ? (
+                            <span
+                              className={
+                                overdue
+                                  ? "font-medium text-red-600"
+                                  : "text-slate-400"
+                              }
+                            >
+                              {formatDayShort(task.dueDate)}
+                              {overdue ? " po termínu" : ""}
+                            </span>
+                          ) : null}
+                          {task.description ? (
+                            <span
+                              className="text-slate-400"
+                              title={task.description}
+                            >
+                              má popis
+                            </span>
+                          ) : null}
+                        </span>
                       ) : null}
-                    </button>
-                  </form>
+                    </Link>
 
-                  <span
-                    className={`flex-1 text-sm leading-5 ${
-                      task.done
-                        ? "text-slate-400 line-through"
-                        : "text-slate-700"
-                    }`}
-                  >
-                    {task.title}
-                  </span>
-
-                  <form action={deleteTask}>
-                    <input type="hidden" name="taskId" value={task.id} />
-                    <button
-                      type="submit"
-                      aria-label={`Smazat úkol ${task.title}`}
-                      className="text-slate-300 opacity-0 transition group-hover:opacity-100 hover:text-red-600"
-                    >
-                      ×
-                    </button>
-                  </form>
-                </li>
-              ))}
+                    <form action={deleteTask}>
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <button
+                        type="submit"
+                        aria-label={`Smazat úkol ${task.title}`}
+                        className="text-slate-300 opacity-0 transition group-hover:opacity-100 hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </form>
+                  </li>
+                );
+              })}
 
               {phaseTasks.length === 0 ? (
                 <li className="px-1 py-2 text-xs text-slate-400">
@@ -101,10 +142,7 @@ export function TaskBoard({
               ) : null}
             </ul>
 
-            <form
-              action={createTask}
-              className="border-t border-slate-100 p-2"
-            >
+            <form action={createTask} className="border-t border-slate-100 p-2">
               <input type="hidden" name="projectId" value={projectId} />
               <input type="hidden" name="phase" value={phase} />
               <input

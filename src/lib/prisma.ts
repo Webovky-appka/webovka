@@ -17,10 +17,31 @@ function createPrismaClient(): PrismaClient {
   });
 }
 
-export const prisma: PrismaClient =
-  globalForPrisma.prisma ?? createPrismaClient();
+function getPrismaClient(): PrismaClient {
+  // Hot reload v devu by jinak otevíral nové spojení při každé změně.
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma ??= createPrismaClient();
+    return globalForPrisma.prisma;
+  }
 
-// Hot reload v devu by jinak otevíral nové spojení při každé změně.
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  cachedClient ??= createPrismaClient();
+  return cachedClient;
 }
+
+let cachedClient: PrismaClient | undefined;
+
+/**
+ * Klient se vytváří až při prvním použití. Kdyby vznikal při importu modulu,
+ * `next build` by vyžadoval DATABASE_URL — sběr dat stránek totiž moduly
+ * importuje — a build by padal na proměnné, která je potřeba až za běhu.
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getPrismaClient() as unknown as Record<
+      string | symbol,
+      unknown
+    >;
+    const value = client[property];
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
