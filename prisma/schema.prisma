@@ -61,6 +61,7 @@ model User {
   phasesFinished ProjectPhase[]
   attachments    Attachment[]
   googleAccount  GoogleAccount?
+  projectDocs    ProjectDoc[]
 }
 
 /**
@@ -116,6 +117,8 @@ model Project {
   /// Náš nový web — staging nebo už spuštěná verze. Stávající web klienta je
   /// u klienta samotného, protože se nemění po zakázkách.
   previewUrl String?
+  /// Repozitář zakázky ve tvaru owner/repo. Prázdné = zakázka repozitář nemá.
+  repoFullName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -126,6 +129,7 @@ model Project {
   approvals   Approval[]
   portalLinks PortalLink[]
   attachments Attachment[]
+  docs        ProjectDoc[]
 
   @@index([clientId])
   @@index([status])
@@ -298,4 +302,27 @@ model Attachment {
   @@index([clientId, createdAt])
   @@index([projectId])
   @@index([taskId])
+}
+
+/// Dokument v Google Docs založený z aplikace. Soubor patří tomu, kdo ho
+/// založil — aplikace má oprávnění drive.file, tedy vidí jen na soubory, které
+/// sama vytvořila. Odkaz si držíme u sebe, protože do Drive vypisovat nemůžeme.
+model ProjectDoc {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title String
+  /// Id souboru v Google Drive.
+  docId String @unique
+  /// Adresa dokumentu v Google Docs.
+  webViewLink String
+  /// Předloha, ze které dokument vznikl. Prázdné = prázdný dokument.
+  templateKey String?
+
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }
