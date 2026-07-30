@@ -51,6 +51,9 @@ export function AutoSaveInput({
   className,
   placeholder,
   allowEmpty = false,
+  type = "text",
+  min,
+  max,
 }: {
   name: string;
   defaultValue: string;
@@ -58,12 +61,18 @@ export function AutoSaveInput({
   className?: string;
   placeholder?: string;
   allowEmpty?: boolean;
+  type?: "text" | "number";
+  min?: number;
+  max?: number;
 }) {
   const lastSaved = useRef(defaultValue);
 
   return (
     <input
       name={name}
+      type={type}
+      min={min}
+      max={max}
       defaultValue={defaultValue}
       aria-label={ariaLabel}
       className={className}

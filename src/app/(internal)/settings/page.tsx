@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 
 import { GmailPanel } from "@/components/settings/gmail-panel";
+import { GoogleLinksForm } from "@/components/settings/google-links-form";
 import { PasswordForm } from "@/components/settings/password-form";
 import { TaskTemplatePanel } from "@/components/settings/task-template-panel";
 import { aiModel, isAiConfigured } from "@/lib/ai";
@@ -52,6 +53,10 @@ export default async function SettingsPage(props: {
             </p>
           </div>
           <PasswordForm />
+
+          <hr className="border-slate-100" />
+
+          <GoogleLinksForm index={currentUser.googleAccountIndex} />
         </section>
 
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">

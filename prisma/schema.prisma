@@ -57,6 +57,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  /// Pořadí účtu Google v prohlížeči pro rychlé odkazy v navigaci ("u/6" v adrese).
+  /// Každý ho má jiné. Prázdné = použije se GOOGLE_ACCOUNT_INDEX.
+  googleAccountIndex Int?
+
   messages       Message[]
   phasesFinished ProjectPhase[]
   attachments    Attachment[]

@@ -47,3 +47,33 @@ export async function changePassword(
   revalidatePath("/settings");
   return { success: "Heslo bylo změněno." };
 }
+
+/** Nejvyšší rozumné pořadí účtu. Víc než dvacet účtů v prohlížeči nikdo nemá. */
+const MAX_ACCOUNT_INDEX = 20;
+
+/**
+ * Pořadí účtu Google pro rychlé odkazy v navigaci. Prázdná hodnota ho zruší
+ * a odkazy se vrátí k výchozímu nastavení celého nasazení.
+ */
+export async function setGoogleAccountIndex(formData: FormData) {
+  const user = await requireUser();
+
+  const raw = formData.get("googleAccountIndex");
+  if (typeof raw !== "string") return;
+
+  let index: number | null = null;
+  if (raw.trim() !== "") {
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed)) return;
+    if (parsed < 0 || parsed > MAX_ACCOUNT_INDEX) return;
+    index = parsed;
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { googleAccountIndex: index },
+  });
+
+  // Odkazy jsou v layoutu, takže se musí překreslit celá interní část.
+  revalidatePath("/", "layout");
+}
