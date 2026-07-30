@@ -7,7 +7,10 @@ import type { User } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifyToken } from "@/lib/session";
 
-export type SessionUser = Pick<User, "id" | "email" | "name" | "role">;
+export type SessionUser = Pick<
+  User,
+  "id" | "email" | "name" | "role" | "googleAccountIndex"
+>;
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const store = await cookies();
@@ -16,7 +19,13 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, name: true, role: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      googleAccountIndex: true,
+    },
   });
 }
 

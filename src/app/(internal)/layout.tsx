@@ -7,21 +7,24 @@ import { requireUser } from "@/lib/auth";
  * Rychlé odkazy do Googlu, dokud nefunguje napojení účtu. Otevírají se v nové
  * kartě, ať se neztratí rozdělaná práce v aplikaci.
  *
- * „u/6“ v adrese je pořadí účtu přihlášeného v prohlížeči, ne jméno účtu.
- * Každý má to pořadí jiné — komu nepasuje, přepíše si ho v GOOGLE_ACCOUNT_INDEX.
+ * „u/6“ v adrese je pořadí účtu přihlášeného v prohlížeči, ne jméno účtu, a
+ * každý ho má jiné. Proto si ho každý nastavuje sám v Nastavení; nastavení
+ * celého nasazení slouží jen jako výchozí hodnota.
  */
-const accountIndex = process.env.GOOGLE_ACCOUNT_INDEX ?? "6";
+function googleLinks(userIndex: number | null) {
+  const index = userIndex ?? process.env.GOOGLE_ACCOUNT_INDEX ?? "0";
 
-const EXTERNAL_LINKS = [
-  {
-    label: "Gmail",
-    href: `https://mail.google.com/mail/u/${accountIndex}/#inbox`,
-  },
-  {
-    label: "Google Docs",
-    href: `https://docs.google.com/document/u/${accountIndex}/`,
-  },
-];
+  return [
+    {
+      label: "Gmail",
+      href: `https://mail.google.com/mail/u/${index}/#inbox`,
+    },
+    {
+      label: "Google Docs",
+      href: `https://docs.google.com/document/u/${index}/`,
+    },
+  ];
+}
 
 export default async function InternalLayout({
   children,
@@ -65,7 +68,7 @@ export default async function InternalLayout({
                 |
               </span>
 
-              {EXTERNAL_LINKS.map((link) => (
+              {googleLinks(user.googleAccountIndex).map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
