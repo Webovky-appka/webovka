@@ -22,6 +22,8 @@ const ClientSchema = z.object({
   email: optionalText,
   phone: optionalText,
   website: optionalText,
+  ico: optionalText,
+  address: optionalText,
   internalNote: optionalText,
 });
 
@@ -38,6 +40,8 @@ function readForm(formData: FormData) {
     email: formData.get("email"),
     phone: formData.get("phone"),
     website: formData.get("website"),
+    ico: formData.get("ico"),
+    address: formData.get("address"),
     internalNote: formData.get("internalNote"),
   };
 }

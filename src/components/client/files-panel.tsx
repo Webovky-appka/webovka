@@ -118,7 +118,7 @@ export function FilesPanel({
 
         <FormError message={state?.error} />
         <p className="text-xs text-slate-500">
-          Nejvýše 25 MB. Obrázky, PDF, ZIP, dokumenty Wordu a Excelu. Soubor se
+          Nejvýše 4 MB. Obrázky, PDF, ZIP, dokumenty Wordu a Excelu. Soubor se
           uloží k zakázce {projectName}, ale zůstane vidět u celého klienta.
         </p>
       </form>

@@ -61,7 +61,13 @@ describe("limity nahrávání", () => {
     }
   });
 
-  it("má limit velikosti 25 MB", () => {
-    expect(MAX_UPLOAD_BYTES).toBe(25 * 1024 * 1024);
+  /**
+   * Limit musí zůstat pod 4,5 MB, což je strop Vercelu na tělo požadavku do
+   * serverless funkce. Nad ním by nahrávání spadlo na 413 ještě před aplikací
+   * a uživatel by neviděl naši zprávu, ale rozbitou stránku.
+   */
+  it("má limit velikosti pod stropem Vercelu", () => {
+    expect(MAX_UPLOAD_BYTES).toBe(4 * 1024 * 1024);
+    expect(MAX_UPLOAD_BYTES).toBeLessThan(4.5 * 1024 * 1024);
   });
 });

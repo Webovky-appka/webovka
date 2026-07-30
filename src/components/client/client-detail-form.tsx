@@ -15,6 +15,8 @@ export function ClientDetailForm({
     email: string | null;
     phone: string | null;
     website: string | null;
+    ico: string | null;
+    address: string | null;
     internalNote: string | null;
   };
 }) {
@@ -52,6 +54,18 @@ export function ClientDetailForm({
           name="website"
           defaultValue={client.website}
           placeholder="https://"
+        />
+        <Field
+          label="IČO"
+          name="ico"
+          defaultValue={client.ico}
+          hint="Do smlouvy o dílo."
+        />
+        <Field
+          label="Sídlo"
+          name="address"
+          defaultValue={client.address}
+          placeholder="ulice, město, PSČ"
         />
       </div>
 
