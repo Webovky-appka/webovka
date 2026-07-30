@@ -2,6 +2,7 @@ import { UserRole } from "@prisma/client";
 
 import { GmailPanel } from "@/components/settings/gmail-panel";
 import { GoogleLinksForm } from "@/components/settings/google-links-form";
+import { LegalPanel } from "@/components/settings/legal-panel";
 import { PasswordForm } from "@/components/settings/password-form";
 import { TaskTemplatePanel } from "@/components/settings/task-template-panel";
 import { aiModel, isAiConfigured } from "@/lib/ai";
@@ -87,6 +88,8 @@ export default async function SettingsPage(props: {
             ))}
           </ul>
         </section>
+
+        <LegalPanel />
 
         <GmailPanel
           account={account}

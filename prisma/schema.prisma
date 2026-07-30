@@ -66,6 +66,28 @@ model User {
   attachments    Attachment[]
   googleAccount  GoogleAccount?
   projectDocs    ProjectDoc[]
+  contracts      Contract[]
+}
+
+/**
+ * Smlouva k zakázce. Text se ukládá celý, ne jen parametry — model do něj může
+ * zasáhnout a ruční úpravy nesmí přepsat příští složení šablony.
+ */
+model Contract {
+  id                String   @id @default(cuid())
+  projectId         String   @unique
+  body              String
+  totalPrice        Int
+  depositPercent    Int
+  hourlyRate        Int
+  revisionsPerPhase Int
+  paymentDays       Int
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 }
 
 /**
@@ -134,6 +156,7 @@ model Project {
   portalLinks PortalLink[]
   attachments Attachment[]
   docs        ProjectDoc[]
+  contract    Contract?
 
   @@index([clientId])
   @@index([status])
