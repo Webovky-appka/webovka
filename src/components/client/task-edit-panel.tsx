@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/attachments";
 import { updateTask, type TaskFormState } from "@/app/actions/tasks";
 import { Field, FormError, TextareaField } from "@/components/field";
+import { UploadField } from "@/components/upload-field";
 import { formatFileSize } from "@/lib/format";
 
 export type EditedTask = {
@@ -199,13 +200,9 @@ function TaskFiles({
         <input type="hidden" name="kind" value={AttachmentKind.OTHER} />
 
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            name="file"
-            type="file"
-            required
-            aria-label="Soubor k úkolu"
-            className="min-w-48 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-sm"
-          />
+          <div className="min-w-48 flex-1">
+            <UploadField id={`task-file-${taskId}`} />
+          </div>
           <button
             type="submit"
             disabled={pending}

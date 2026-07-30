@@ -4,28 +4,12 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-/**
- * Strop na velikost přílohy. Držíme ho pod 4,5 MB, což je limit Vercelu na
- * tělo požadavku do serverless funkce — nad ním se nahrávání v produkci
- * neodmítne naší zprávou, ale spadne na 413 ještě před aplikací. Větší soubory
- * by potřebovaly nahrávat přímo do Blobu z prohlížeče, mimo Server Action.
- */
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+// Limity a povolené typy potřebuje i políčko v prohlížeči, proto žijí zvlášť.
+export { ALLOWED_MIME_TYPES, MAX_UPLOAD_BYTES } from "./upload-plan";
 
-export const ALLOWED_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "image/svg+xml",
-  "application/pdf",
-  "application/zip",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-] as const;
+
+
+
 
 const LOCAL_ROOT = path.join(process.cwd(), ".uploads");
 
