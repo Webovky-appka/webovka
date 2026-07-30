@@ -15,7 +15,7 @@ import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Zakázky — Stavba webu",
+  title: "Zakázky — Mitsov Web",
 };
 
 type SearchParams = {

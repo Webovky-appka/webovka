@@ -6,7 +6,7 @@
  * upozornění, ať se nedokončený dokument nedostane ke klientovi ani do souhlasné
  * obrazovky Googlu.
  */
-export const SERVICE_NAME = "Stavba webu";
+export const SERVICE_NAME = "Mitsov Web";
 
 export const OPERATOR = {
   /** Jméno nebo firma včetně právní formy, například „Jan Novák“ nebo „Studio s.r.o.“ */

@@ -37,17 +37,28 @@ export async function createTask(formData: FormData) {
     select: { position: true },
   });
 
-  await prisma.task.create({
+  const task = await prisma.task.create({
     data: {
       projectId: phase.projectId,
       phaseId,
       title: title.trim(),
       position: (last?.position ?? -1) + 1,
     },
+    select: { id: true },
   });
 
   revalidatePath(`/clients/${phase.project.clientId}`);
   revalidatePath("/projects");
+
+  /**
+   * Druhé tlačítko u přidávání otevře nový úkol rovnou k úpravě, ať nemusíte
+   * úkol nejdřív založit a pak ho hledat a otevírat. Odkaz skládá stránka,
+   * protože jen ta zná zobrazenou fázi a záložku.
+   */
+  const editHrefBase = formData.get("editHrefBase");
+  if (typeof editHrefBase === "string" && editHrefBase !== "") {
+    redirect(`${editHrefBase}&task=${task.id}#task-editor`);
+  }
 }
 
 export async function updateTask(

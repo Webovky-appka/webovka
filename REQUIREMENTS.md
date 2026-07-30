@@ -1,4 +1,4 @@
-# Stavba webu — správa klientů a zakázek
+# Mitsov Web — správa klientů a zakázek
 
 Značení priorit u jednotlivých bodů:
 - **[v1]** — součást první verze

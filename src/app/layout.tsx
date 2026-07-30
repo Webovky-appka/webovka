@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stavba webu",
+  title: "Mitsov Web",
   description: "Správa klientů a webových zakázek",
 };
 

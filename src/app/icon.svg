@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Mitsov Web">
+  <title>Mitsov Web</title>
+  <rect width="64" height="64" rx="14" fill="#0f172a" />
+  <!--
+    Písmeno M vedené jako střecha a dva sloupy: nástroj na stavbu webů.
+    Kreslené tahy, ne text — font se v ikoně nemá na co spolehnout.
+  -->
+  <path
+    d="M14 46V22l18 13 18-13v24"
+    fill="none"
+    stroke="#f8fafc"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Tečka místo základního kamene, zároveň akcent značky. -->
+  <circle cx="32" cy="46" r="4" fill="#f59e0b" />
+</svg>

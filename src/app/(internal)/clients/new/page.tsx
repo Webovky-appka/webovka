@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { NewClientForm } from "./new-client-form";
 
 export const metadata = {
-  title: "Nový klient — Stavba webu",
+  title: "Nový klient — Mitsov Web",
 };
 
 export default async function NewClientPage() {

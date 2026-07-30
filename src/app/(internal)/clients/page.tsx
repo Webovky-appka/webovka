@@ -8,7 +8,7 @@ import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Klienti — Stavba webu",
+  title: "Klienti — Mitsov Web",
 };
 
 const STATUS_LABELS: Record<ClientStatus, string> = {

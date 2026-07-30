@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ErrorNotice, errorLinkClasses } from "@/components/error-notice";
 
 export const metadata = {
-  title: "Stránka nenalezena — Stavba webu",
+  title: "Stránka nenalezena — Mitsov Web",
 };
 
 /**

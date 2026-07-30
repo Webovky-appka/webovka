@@ -22,6 +22,12 @@ export function NewClientForm() {
           <Field label="E-mail" name="email" type="email" />
           <Field label="Telefon" name="phone" />
           <Field label="Web" name="website" placeholder="https://" />
+          <Field label="IČO" name="ico" hint="Do smlouvy o dílo." />
+          <Field
+            label="Sídlo"
+            name="address"
+            placeholder="ulice, město, PSČ"
+          />
         </div>
         <TextareaField
           label="Interní poznámky"

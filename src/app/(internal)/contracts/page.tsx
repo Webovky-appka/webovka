@@ -7,7 +7,7 @@ import { MISSING, supplierFrom } from "@/lib/contract-template";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Smlouvy — Stavba webu",
+  title: "Smlouvy — Mitsov Web",
 };
 
 export default async function ContractsPage(props: {

@@ -12,7 +12,7 @@ import { googleAccountFor, isGoogleConfigured } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Nastavení — Stavba webu",
+  title: "Nastavení — Mitsov Web",
 };
 
 const ROLE_LABELS: Record<UserRole, string> = {
