@@ -3,8 +3,9 @@
 ## Než začnete
 
 Rozjezd lokálního prostředí je popsaný v [README.md](README.md). Zadání
-a rozsah v1 jsou v [REQUIREMENTS.md](REQUIREMENTS.md) — nové funkce prosím
-nejdřív dopište tam, ať je jasné, co je v rozsahu a co ne.
+a rozsah jsou v [REQUIREMENTS.md](REQUIREMENTS.md), stav rozpracovanosti v jeho
+sekci 0 — nové funkce prosím nejdřív dopište tam, ať je jasné, co je v rozsahu
+a co ne.
 
 ## Větve a commity
 
@@ -61,3 +62,46 @@ npm run db:migrate
 - Automatické události v komunikaci (`SYSTEM_EVENT`) a připomínky klienta
   (`PORTAL_FEEDBACK`) se nedají mazat ani editovat — slouží jako doklad.
 - `.env` do gitu nepatří. Nové proměnné dopište do `.env.example`.
+
+## Pasti, na které jsme narazili
+
+Tohle jsou chyby, které nás už stály čas. Každá se pozná pozdě a působí jako něco
+jiného, než čím je.
+
+**Nahrávání souborů selže nad 1 MB.** Server Actions mají tělo požadavku
+omezené na 1 MB, takže požadavek se zamítne ještě před spuštěním akce a kontrola
+velikosti uvnitř se k tomu nedostane. Limit zvedá `experimental.serverActions
+.bodySizeLimit` v `next.config.ts`. Nad 4,5 MB to stejně neprojde, protože tam má
+strop Vercel — proto je `MAX_UPLOAD_BYTES` na 4 MB a velké fotky se zmenšují
+v prohlížeči.
+
+**Modul s `"use server"` smí exportovat jen asynchronní funkce.** Konstanta z něj
+je v prohlížeči `undefined`, bez chyby a bez varování — políčka se prostě
+vykreslí prázdná. Sdílené konstanty patří do obyčejného modulu.
+
+**Klientská komponenta nesmí importovat modul se `server-only`.** Rozsype to build
+celé stránky na černou obrazovku. Když konstantu potřebuje server i prohlížeč, dej
+ji do modulu bez `server-only` a ze serverového ji jen znovu vyvez.
+
+**Po změně schématu restartuj vývojový server.** `prisma generate` sám nestačí,
+běžící server drží starého klienta a hlásí „Cannot read properties of undefined
+(reading 'findUnique')" nebo „Unknown field". Vypadá to jako chyba v dotazu.
+
+**Lockfile generuj na Linuxu.** `npm install` na macOS zahodí volitelné balíčky
+`@emnapi/*`, které existují jen pro Linux, a CI pak spadne na `npm ci` ještě před
+prvním testem. Pomůže:
+
+```bash
+docker run --rm -v "$PWD":/app -w /app node:22 npm install --package-lock-only
+```
+
+`--package-lock-only` je důležité — bez něj kontejner přepíše `node_modules`
+linuxovými binárkami a lokální vývoj přestane fungovat.
+
+**Neřízený input si po překreslení nechá starou hodnotu.** React ho
+nepřemountuje, takže termín zadaný u jedné fáze se ukazoval i u druhé, i když
+v databázi bylo správně. Řeší to `key` vázaný na id záznamu.
+
+**Data z formuláře vs. React stav.** Když se z jednoho formuláře skládá text
+a z druhého ukládá, čti hodnoty z jednoho společného stavu. Jinak se do databáze
+zapíše nula, i když na obrazovce je částka.

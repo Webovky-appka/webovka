@@ -5,6 +5,32 @@ Značení priorit u jednotlivých bodů:
 - **[v2]** — automatizace a rozšíření, až po ověření v1
 - **[nápad]** — k diskuzi, zatím nezávazné
 
+## 0. Stav k 30. 7. 2026
+
+**Fáze 1 je hotová a v produkci.** Postavené je i několik věcí, které v původním
+zadání nebyly:
+
+| Hotovo | Kde |
+| --- | --- |
+| Klienti, komunikace, fáze, úkoly, přílohy | interní část |
+| Klientský portál s odkazem a PIN, schvalování a připomínky | `/portal/[token]` |
+| Vlastní fáze u každé zakázky, předloha pro nové | zakázka, Nastavení |
+| E-mailové notifikace přes Resend | automaticky |
+| Úplné smazání klienta podle GDPR | Nastavení u klienta |
+| Smlouva o dílo s platbami po milnících a exportem do Wordu | `/contracts` |
+| Asistent na e-maily klientovi (OpenAI) a odesílání z Gmailu | záložka Napsat e-mail |
+| Dokumenty v Google Docs z předloh | `/docs` |
+| Přehled repozitáře zakázky z GitHubu | záložka GitHub |
+| Zásady ochrany osobních údajů a podmínky užívání | `/privacy`, `/terms` |
+| Fakturační údaje klienta i naše, do smluv | u klienta a v Nastavení |
+
+**Z fáze 2 zbývá:** automatický import e-mailů do komunikace a platby (Stripe).
+Odesílání e-mailů z Gmailu už funguje, čtení a import ne.
+
+Otevřené otázky ze sekce 11 jsou rozhodnuté: klient schvaluje průběžně po každé
+fázi, klient může mít víc zakázek, termíny v portálu vidí, databáze je
+PostgreSQL od začátku.
+
 ## 1. Cíl projektu
 
 Nástroj pro freelancera/malé studio tvořící weby pro malé firmy. Řeší tři věci na jednom místě:
@@ -54,8 +80,10 @@ Pozn.: v1 nerozlišuje admin vs. vývojář oprávněními — oba jsou plnohodn
 
 ### Fáze 2 — automatizace (později)
 - Napojení na e-mail (Gmail API) — automatický import komunikace ke klientovi
-- Platby (Stripe) — vazba schválení fáze → výzva k platbě milníku
-- Notifikace (e-mail adminovi při schválení/připomínce klienta, e-mail klientovi při změně fáze)
+  — **odesílání hotové, import zbývá**
+- Platby (Stripe) — vazba schválení fáze → výzva k platbě milníku — **zbývá**
+- Notifikace (e-mail adminovi při schválení/připomínce klienta, e-mail klientovi
+  při změně fáze) — **hotovo**
 
 ## 4. Funkční požadavky do detailu
 
@@ -211,18 +239,17 @@ Všechny tabulky: `id`, `created_at`, `updated_at`. Mazání klienta jako soft d
 - Základní CI (lint + build na PR) [nápad]
 - Seed skript s ukázkovými daty pro lokální vývoj [nápad]
 
-## 9. Co NENÍ součástí v1
+## 9. Co zatím není
 - Automatický import e-mailu (fáze 2)
 - Platby (fáze 2)
-- E-mailové notifikace (fáze 2)
 - Vícejazyčnost, mobilní aplikace, pokročilé reporty
-- Rozlišení oprávnění admin vs. vývojář
+- Rozlišení oprávnění admin vs. vývojář — role v databázi je, ale nic neomezuje
 - Nahrávání souborů klientem přes portál
 
 ## 10. Nápady do budoucna (backlog, neřazeno)
 - Fakturace nebo napojení na fakturační službu (Fakturoid API) — vazba milník → faktura
 - Časové výkazy u úkolů (strávený čas → podklad pro vyúčtování víceprací)
-- Šablony celých projektů (typ „vizitkový web" vs. „e-shop" → jiná sada úkolů)
+- Šablony celých projektů (typ „vizitkový web" vs. „e-shop" → jiná sada úkolů) — částečně: předloha fází existuje, ale je jen jedna
 - Kalendář/připomínky („ozvat se klientovi za týden")
 - Přehledová stránka: kolik zakázek v jaké fázi, průměrná doba fáze
 - Notifikace do mobilu (Telegram/Slack webhook) při připomínce klienta

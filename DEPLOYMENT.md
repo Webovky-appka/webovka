@@ -256,7 +256,7 @@ a token se vydá znovu.
 | ----------------------- | ------- | --------------------------------------------- |
 | `DATABASE_URL`          | ano     | Connection string z Neonu                     |
 | `SESSION_SECRET`        | ano     | `openssl rand -base64 32`, jiný než lokální   |
-| `APP_URL`               | ano     | Veřejná URL, např. `https://web-appka.cz`     |
+| `APP_URL`               | ano     | Veřejná URL, např. `https://mitsov.cz`        |
 | `STORAGE_DRIVER`        | ano     | `blob`                                        |
 | `BLOB_STORE_ID`         | ano*    | Doplní Vercel při vytvoření Blob store        |
 | `BLOB_READ_WRITE_TOKEN` | ano*    | Alternativa k BLOB_STORE_ID, viz níže         |
@@ -269,6 +269,17 @@ a token se vydá znovu.
 | `GOOGLE_CLIENT_ID`      | ne      | OAuth klient pro Gmail a Google Docs          |
 | `GOOGLE_CLIENT_SECRET`  | ne      | Tajný klíč téhož OAuth klienta                |
 | `GITHUB_TOKEN`          | ne      | Fine-grained PAT pro čtení repozitářů         |
+| `GOOGLE_ACCOUNT_INDEX`  | ne      | Výchozí pořadí účtu pro odkazy v navigaci     |
+| `STUDIO_NAME`           | ne      | Zhotovitel ve smlouvách, přebíjí Nastavení    |
+| `STUDIO_ICO`            | ne      | IČO do smluv                                  |
+| `STUDIO_DIC`            | ne      | DIČ do smluv, prázdné u neplátce              |
+| `STUDIO_ADDRESS`        | ne      | Sídlo do smluv                                |
+| `STUDIO_BANK_ACCOUNT`   | ne      | Účet pro platby ve smlouvách                  |
+| `STUDIO_REPRESENTED_BY` | ne      | Kdo smlouvu podepisuje                        |
+
+Údaje `STUDIO_*` se dají místo proměnných vyplnit v aplikaci v **Nastavení →
+Naše údaje do smluv**, což je pohodlnější — změna IČA pak neznamená nasazovat.
+Uložené hodnoty mají přednost před proměnnými.
 
 `APP_URL` musí odpovídat skutečné adrese — sestavují se z ní odkazy do
 klientského portálu. Se špatnou hodnotou dostane klient odkaz, který nefunguje.
