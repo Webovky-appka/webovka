@@ -3,6 +3,26 @@ import Link from "next/link";
 import { logout } from "@/app/actions/auth";
 import { requireUser } from "@/lib/auth";
 
+/**
+ * Rychlé odkazy do Googlu, dokud nefunguje napojení účtu. Otevírají se v nové
+ * kartě, ať se neztratí rozdělaná práce v aplikaci.
+ *
+ * „u/6“ v adrese je pořadí účtu přihlášeného v prohlížeči, ne jméno účtu.
+ * Každý má to pořadí jiné — komu nepasuje, přepíše si ho v GOOGLE_ACCOUNT_INDEX.
+ */
+const accountIndex = process.env.GOOGLE_ACCOUNT_INDEX ?? "6";
+
+const EXTERNAL_LINKS = [
+  {
+    label: "Gmail",
+    href: `https://mail.google.com/mail/u/${accountIndex}/#inbox`,
+  },
+  {
+    label: "Google Docs",
+    href: `https://docs.google.com/document/u/${accountIndex}/`,
+  },
+];
+
 export default async function InternalLayout({
   children,
 }: {
@@ -40,6 +60,25 @@ export default async function InternalLayout({
               >
                 Nastavení
               </Link>
+
+              <span aria-hidden="true" className="text-slate-200">
+                |
+              </span>
+
+              {EXTERNAL_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-500 transition hover:text-slate-900"
+                >
+                  {link.label}
+                  <span aria-hidden="true" className="ml-0.5 text-slate-400">
+                    ↗
+                  </span>
+                </a>
+              ))}
             </nav>
           </div>
 
