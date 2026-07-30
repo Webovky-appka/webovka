@@ -8,7 +8,7 @@ import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Náhled portálu — Stavba webu",
+  title: "Náhled portálu — Mitsov Web",
 };
 
 /**

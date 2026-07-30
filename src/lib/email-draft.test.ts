@@ -10,7 +10,7 @@ import {
   type EmailContext,
 } from "./email-draft";
 
-const SIGNATURE = "Daniel Mitka\nStavba webu";
+const SIGNATURE = "Daniel Mitka\nMitsov Web";
 
 function context(overrides: Partial<EmailContext> = {}): EmailContext {
   return {

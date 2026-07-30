@@ -42,7 +42,7 @@ export default async function InternalLayout({
               href="/projects"
               className="font-semibold tracking-tight text-slate-900"
             >
-              Stavba webu
+              Mitsov Web
             </Link>
             <nav className="flex items-center gap-4 text-sm">
               <Link

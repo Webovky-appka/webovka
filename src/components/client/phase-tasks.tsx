@@ -260,14 +260,26 @@ export function PhaseTasks({
         })}
       </ul>
 
-      <form action={createTask} className="border-t border-slate-100 p-4">
+      <form
+        action={createTask}
+        className="flex flex-wrap items-center gap-2 border-t border-slate-100 p-4"
+      >
         <input type="hidden" name="phaseId" value={phaseId} />
         <input
           name="title"
           placeholder={`Přidat úkol do fáze ${phaseName}…`}
           aria-label={`Přidat úkol do fáze ${phaseName}`}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2.5 outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          className="min-w-48 flex-1 rounded-lg border border-slate-200 px-3 py-2.5 outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         />
+        {/* Založí úkol a hned ho otevře, ať se nemusí zakládat a pak dohledávat. */}
+        <button
+          type="submit"
+          name="editHrefBase"
+          value={taskHrefBase}
+          className="shrink-0 rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50"
+        >
+          Upravit a přidat soubor
+        </button>
       </form>
     </section>
   );

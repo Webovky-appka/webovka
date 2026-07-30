@@ -54,8 +54,8 @@ export async function generateMetadata(props: {
 
   return {
     title: client
-      ? `${client.companyName} — Stavba webu`
-      : "Klient — Stavba webu",
+      ? `${client.companyName} — Mitsov Web`
+      : "Klient — Mitsov Web",
   };
 }
 

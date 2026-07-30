@@ -10,7 +10,7 @@ import {
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
-  title: "Dokumenty — Stavba webu",
+  title: "Dokumenty — Mitsov Web",
 };
 
 /**
