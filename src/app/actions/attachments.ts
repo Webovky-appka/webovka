@@ -45,22 +45,45 @@ export async function uploadAttachment(
     Object.values(AttachmentKind).find((value) => value === kindValue) ??
     AttachmentKind.OTHER;
 
-  const { storageKey } = await saveFile(clientId, file);
+  /**
+   * Selhání úložiště se musí dozvědět uživatel, ne jen log. Bez toho vypadá
+   * chybějící token k Blobu úplně stejně jako rozbitá aplikace a nedá se poznat,
+   * co spravit.
+   */
+  let storageKey: string;
+  try {
+    ({ storageKey } = await saveFile(clientId, file));
+  } catch (error) {
+    console.error("[attachments] Uložení souboru selhalo:", error);
+    return {
+      error:
+        process.env.STORAGE_DRIVER === "blob"
+          ? "Úložiště soubor nepřijalo. Zkontrolujte nastavení Vercel Blobu (BLOB_STORE_ID nebo BLOB_READ_WRITE_TOKEN). Podrobnost je v logu serveru."
+          : "Soubor se nepodařilo uložit na disk. Podrobnost je v logu serveru.",
+    };
+  }
 
-  await prisma.attachment.create({
-    data: {
-      clientId,
-      projectId:
-        typeof projectId === "string" && projectId !== "" ? projectId : null,
-      taskId: typeof taskId === "string" && taskId !== "" ? taskId : null,
-      filename: file.name,
-      kind,
-      mimeType: file.type,
-      size: file.size,
-      storageKey,
-      uploadedById: user.id,
-    },
-  });
+  try {
+    await prisma.attachment.create({
+      data: {
+        clientId,
+        projectId:
+          typeof projectId === "string" && projectId !== "" ? projectId : null,
+        taskId: typeof taskId === "string" && taskId !== "" ? taskId : null,
+        filename: file.name,
+        kind,
+        mimeType: file.type,
+        size: file.size,
+        storageKey,
+        uploadedById: user.id,
+      },
+    });
+  } catch (error) {
+    // Záznam v databázi nevznikl, takže nahraný soubor by zůstal osiřelý.
+    console.error("[attachments] Zápis přílohy do databáze selhal:", error);
+    await deleteFile(storageKey).catch(() => undefined);
+    return { error: "Přílohu se nepodařilo zapsat. Zkuste to prosím znovu." };
+  }
 
   revalidatePath(`/clients/${clientId}`);
   return undefined;

@@ -217,7 +217,7 @@ function TaskFiles({
 
         <FormError message={state?.error} />
         <p className="text-xs text-slate-500">
-          Fotka, screenshot nebo podklad. Nejvýše 25 MB.
+          Fotka, screenshot nebo podklad. Nejvýše 4 MB.
         </p>
       </form>
     </div>

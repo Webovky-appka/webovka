@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ContractBuilder } from "@/components/contracts/contract-builder";
 import { aiModel, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
-import { MISSING, supplierFromEnv } from "@/lib/contract-template";
+import { MISSING, supplierFrom } from "@/lib/contract-template";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = {
@@ -39,7 +39,10 @@ export default async function ContractsPage(props: {
       })
     : null;
 
-  const supplier = supplierFromEnv(user.name);
+  const studio = await prisma.studioProfile.findUnique({
+    where: { id: "studio" },
+  });
+  const supplier = supplierFrom(studio, user.name);
   const missingSupplier = [
     supplier.ico === MISSING ? "IČO" : null,
     supplier.address === MISSING ? "sídlo" : null,

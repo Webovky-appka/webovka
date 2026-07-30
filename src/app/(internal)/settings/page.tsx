@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { GmailPanel } from "@/components/settings/gmail-panel";
 import { GoogleLinksForm } from "@/components/settings/google-links-form";
 import { LegalPanel } from "@/components/settings/legal-panel";
+import { StudioProfileForm } from "@/components/settings/studio-profile-form";
 import { PasswordForm } from "@/components/settings/password-form";
 import { TaskTemplatePanel } from "@/components/settings/task-template-panel";
 import { aiModel, isAiConfigured } from "@/lib/ai";
@@ -25,7 +26,7 @@ export default async function SettingsPage(props: {
   const currentUser = await requireUser();
   const { gmail } = await props.searchParams;
 
-  const [users, templates, account] = await Promise.all([
+  const [users, templates, account, studio] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, email: true, role: true },
@@ -35,6 +36,7 @@ export default async function SettingsPage(props: {
       include: { tasks: { orderBy: { position: "asc" } } },
     }),
     googleAccountFor(currentUser.id),
+    prisma.studioProfile.findUnique({ where: { id: "studio" } }),
   ]);
 
   return (
@@ -87,6 +89,19 @@ export default async function SettingsPage(props: {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              Naše údaje do smluv
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Doplní se do smlouvy jako zhotovitel. Co tu není, bude ve smlouvě
+              označené k doplnění.
+            </p>
+          </div>
+          <StudioProfileForm profile={studio} fallbackName={currentUser.name} />
         </section>
 
         <LegalPanel />

@@ -3,17 +3,91 @@
 import { revalidatePath } from "next/cache";
 import * as z from "zod";
 
+import { AttachmentKind } from "@prisma/client";
+
 import { generateText, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { contractFileName, contractToDocx } from "@/lib/contract-docx";
 import {
   buildContract,
   CONTRACT_DEFAULTS,
   equalShares,
-  supplierFromEnv,
+  supplierFrom,
   type ContractParams,
 } from "@/lib/contract-template";
 import { logSystemEvent } from "@/lib/events";
 import { prisma } from "@/lib/prisma";
+import { deleteFile, saveFile } from "@/lib/storage";
+
+const DOCX_MIME =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * Uloží Word se smlouvou do souborů zakázky. Nahradí předchozí verzi, aby se
+ * v Souborech nekopily stejné smlouvy — v portálu se klientovi neukazuje,
+ * o zveřejnění se rozhoduje ručně.
+ */
+async function attachDocx({
+  projectId,
+  clientId,
+  projectName,
+  body,
+  userId,
+  previousAttachmentId,
+}: {
+  projectId: string;
+  clientId: string;
+  projectName: string;
+  body: string;
+  userId: string;
+  previousAttachmentId: string | null;
+}): Promise<string | null> {
+  try {
+    const buffer = await contractToDocx({
+      text: body,
+      title: `Smlouva o dílo — ${projectName}`,
+    });
+    const filename = contractFileName(projectName);
+    const file = new File([new Uint8Array(buffer)], filename, {
+      type: DOCX_MIME,
+    });
+
+    const { storageKey } = await saveFile(clientId, file);
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        clientId,
+        projectId,
+        filename,
+        kind: AttachmentKind.CONTRACT,
+        mimeType: DOCX_MIME,
+        size: buffer.byteLength,
+        storageKey,
+        uploadedById: userId,
+        visibleInPortal: false,
+      },
+      select: { id: true },
+    });
+
+    // Starou verzi mažeme až po vytvoření nové, aby při chybě nezůstalo nic.
+    if (previousAttachmentId) {
+      const old = await prisma.attachment.findUnique({
+        where: { id: previousAttachmentId },
+        select: { storageKey: true },
+      });
+      if (old) {
+        await prisma.attachment.delete({ where: { id: previousAttachmentId } });
+        await deleteFile(old.storageKey);
+      }
+    }
+
+    return attachment.id;
+  } catch (error) {
+    // Uložený text smlouvy je důležitější než příloha, akce kvůli tomu nepadá.
+    console.error("[contracts] Word se nepodařilo uložit do souborů:", error);
+    return null;
+  }
+}
 
 export type ContractState =
   | {
@@ -70,6 +144,8 @@ async function loadParams(
           contactPerson: true,
           email: true,
           phone: true,
+          ico: true,
+          address: true,
         },
       },
       phases: {
@@ -81,20 +157,22 @@ async function loadParams(
 
   if (!project) return null;
 
+  const studio = await prisma.studioProfile.findUnique({
+    where: { id: "studio" },
+  });
   const shares = equalShares(project.phases.length);
 
   return {
     clientId: project.clientId,
     params: {
-      supplier: supplierFromEnv(userName),
+      supplier: supplierFrom(studio, userName),
       client: {
         companyName: project.client.companyName,
         contactPerson: project.client.contactPerson,
         email: project.client.email,
         phone: project.client.phone,
-        // IČO ani sídlo klienta v aplikaci nevedeme, doplní se do smlouvy ručně.
-        ico: null,
-        address: null,
+        ico: project.client.ico,
+        address: project.client.address,
       },
       projectName: project.name,
       totalPrice: input.totalPrice,
@@ -256,7 +334,7 @@ export async function saveContract(
 
   const existing = await prisma.contract.findUnique({
     where: { projectId },
-    select: { id: true },
+    select: { id: true, attachmentId: true },
   });
 
   await prisma.contract.upsert({
@@ -264,6 +342,22 @@ export async function saveContract(
     create: { projectId, createdById: user.id, ...values },
     update: values,
   });
+
+  const attachmentId = await attachDocx({
+    projectId,
+    clientId: project.clientId,
+    projectName: project.name,
+    body,
+    userId: user.id,
+    previousAttachmentId: existing?.attachmentId ?? null,
+  });
+
+  if (attachmentId) {
+    await prisma.contract.update({
+      where: { projectId },
+      data: { attachmentId },
+    });
+  }
 
   // Do komunikace se zapisuje jen vznik smlouvy, ne každá úprava textu.
   if (!existing) {
@@ -277,5 +371,10 @@ export async function saveContract(
   revalidatePath("/contracts");
   revalidatePath(`/clients/${project.clientId}`);
 
-  return { body, success: "Smlouva uložena. Word si stáhnete tlačítkem níž." };
+  return {
+    body,
+    success: attachmentId
+      ? "Smlouva uložena. Word je i v Souborech u zakázky."
+      : "Smlouva uložena, ale Word se nepodařilo přidat do Souborů. Stáhnout ho můžete tlačítkem níž.",
+  };
 }

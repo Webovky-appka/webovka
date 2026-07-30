@@ -35,10 +35,10 @@ import { prisma } from "@/lib/prisma";
 const TABS = [
   { key: "messages", label: "Komunikace" },
   { key: "docs", label: "Dokumenty" },
-  { key: "files", label: "Soubory" },
-  { key: "github", label: "GitHub" },
-  { key: "settings", label: "Nastavení" },
   { key: "email", label: "Napsat e-mail" },
+  { key: "github", label: "GitHub" },
+  { key: "files", label: "Soubory" },
+  { key: "settings", label: "Nastavení" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];

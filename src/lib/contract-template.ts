@@ -235,14 +235,42 @@ export function buildContract(params: ContractParams): string {
   return lines.join("\n");
 }
 
-/** Údaje zhotovitele z proměnných prostředí. Co chybí, označí se k doplnění. */
-export function supplierFromEnv(fallbackName: string): Supplier {
+/** Co je uložené v Nastavení. Prázdné hodnoty se berou jako nevyplněné. */
+export type StudioProfileLike = {
+  name: string | null;
+  ico: string | null;
+  dic: string | null;
+  address: string | null;
+  bankAccount: string | null;
+  representedBy: string | null;
+} | null;
+
+function pick(...values: (string | null | undefined)[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return null;
+}
+
+/**
+ * Údaje zhotovitele. Přednost má Nastavení, pak proměnné prostředí STUDIO_*,
+ * a co nezbude, je ve smlouvě označené k doplnění — nikdy se nevymýšlí.
+ */
+export function supplierFrom(
+  profile: StudioProfileLike,
+  fallbackName: string,
+): Supplier {
   return {
-    name: process.env.STUDIO_NAME ?? fallbackName,
-    ico: process.env.STUDIO_ICO ?? MISSING,
-    dic: process.env.STUDIO_DIC ?? null,
-    address: process.env.STUDIO_ADDRESS ?? MISSING,
-    bankAccount: process.env.STUDIO_BANK_ACCOUNT ?? MISSING,
-    representedBy: process.env.STUDIO_REPRESENTED_BY ?? fallbackName,
+    name: pick(profile?.name, process.env.STUDIO_NAME, fallbackName)!,
+    ico: pick(profile?.ico, process.env.STUDIO_ICO) ?? MISSING,
+    dic: pick(profile?.dic, process.env.STUDIO_DIC),
+    address: pick(profile?.address, process.env.STUDIO_ADDRESS) ?? MISSING,
+    bankAccount:
+      pick(profile?.bankAccount, process.env.STUDIO_BANK_ACCOUNT) ?? MISSING,
+    representedBy: pick(
+      profile?.representedBy,
+      process.env.STUDIO_REPRESENTED_BY,
+      fallbackName,
+    )!,
   };
 }

@@ -86,8 +86,13 @@ model Contract {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  /// Word vygenerovaný z textu, aby smlouva byla i v souborech zakázky.
+  /// Prázdné = příloha byla smazána v Souborech, při dalším uložení vznikne nová.
+  attachmentId String? @unique
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy  User?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  attachment Attachment? @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
 }
 
 /**
@@ -109,6 +114,21 @@ model GoogleAccount {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/**
+ * Údaje našeho studia do smluv. Jeden řádek s pevným id — nastavuje se
+ * v Nastavení a přebíjí proměnné prostředí STUDIO_*.
+ */
+model StudioProfile {
+  id             String   @id @default("studio")
+  name           String?
+  ico            String?
+  dic            String?
+  address        String?
+  bankAccount    String?
+  representedBy  String?
+  updatedAt      DateTime @updatedAt
+}
+
 model Client {
   id            String       @id @default(cuid())
   companyName   String
@@ -116,6 +136,9 @@ model Client {
   email         String?
   phone         String?
   website       String?
+  /// Fakturační údaje pro smlouvy. Do portálu se nepropisují.
+  ico           String?
+  address       String?
   /// Interní poznámky. Do klientského portálu se nikdy nepropisují.
   internalNote  String?
   status        ClientStatus @default(LEAD)
@@ -325,6 +348,8 @@ model Attachment {
   uploadedById String?
   uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
+
+  contract Contract?
 
   @@index([clientId, createdAt])
   @@index([projectId])
