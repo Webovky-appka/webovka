@@ -58,6 +58,12 @@ export default async function InternalLayout({
                 Dokumenty
               </Link>
               <Link
+                href="/contracts"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                Smlouvy
+              </Link>
+              <Link
                 href="/settings"
                 className="text-slate-600 transition hover:text-slate-900"
               >
