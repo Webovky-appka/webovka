@@ -7,7 +7,6 @@ import * as z from "zod";
 import { generateText, isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import {
-  buildContextText,
   isTone,
   splitDraft,
   systemPrompt,
@@ -29,6 +28,9 @@ export type EmailState =
       source?: "ai" | "template";
       /** Jestli podklady opravdu odešly do OpenAI. Tvrzení v UI musí být pravdivé. */
       contextSent?: boolean;
+      /** Přesné zadání pro model. Ukazuje se, aby bylo vidět, co se posílá. */
+      promptSystem?: string;
+      promptUser?: string;
     }
   | undefined;
 
@@ -44,8 +46,14 @@ const AddressSchema = z.object({
     .transform((value) => value.replace(/\r\n/g, "\n")),
 });
 
-function signature(): string {
-  return process.env.MAIL_SIGNATURE ?? "Váš dodavatel webu";
+/**
+ * Podpis e-mailu. Nahoře jméno člověka, který ho posílá — pod e-mailem klientovi
+ * má být vidět člověk, ne obecná fráze. MAIL_SIGNATURE se přidá jako řádek
+ * studia pod jméno, pokud je nastavená.
+ */
+function signature(userName: string): string {
+  const studio = process.env.MAIL_SIGNATURE?.trim();
+  return studio ? `${userName}\n${studio}` : userName;
 }
 
 /** Posbírá vše o zakázce. Interní poznámka se přidá jen na výslovné přání. */
@@ -160,7 +168,7 @@ export async function composeEmail(
   prevState: EmailState,
   formData: FormData,
 ): Promise<EmailState> {
-  await requireUser();
+  const user = await requireUser();
 
   // Hotový návrh se nesmí ztratit, když se pak jen načtou podklady nebo když
   // chybí zadání — jinak by uživatel přišel o rozepsaný text.
@@ -183,20 +191,31 @@ export async function composeEmail(
   );
   if (!loaded) return { ...keepDraft, error: "Zakázka nenalezena." };
 
-  const context = buildContextText(loaded.context);
+  const sign = signature(user.name);
+
+  // Zadání pro model se skládá vždy, i když se nikam neposílá — ukazuje se
+  // v UI, aby bylo vidět přesně to, co by odešlo.
+  const prompt = {
+    promptSystem: systemPrompt(tone),
+    promptUser: userPrompt(
+      loaded.context,
+      instruction === "" ? "(zadání jste ještě nenapsal)" : instruction,
+      sign,
+    ),
+  };
 
   // Načtení podkladů je samostatný krok, aby šlo zkontrolovat, co se posílá
   // do modelu, ještě než se tam něco pošle.
   if (formData.get("mode") === "context") {
-    return { ...keepDraft, context, contextSent: false };
+    return { ...keepDraft, ...prompt, contextSent: false };
   }
 
-  const fallback = templateDraft(loaded.context, signature());
+  const fallback = templateDraft(loaded.context, sign);
 
   if (!isAiConfigured()) {
     return {
       ...fallback,
-      context,
+      ...prompt,
       source: "template",
       contextSent: false,
     };
@@ -205,15 +224,15 @@ export async function composeEmail(
   if (instruction === "") {
     return {
       ...keepDraft,
+      ...prompt,
       error: "Napište, co má e-mail klientovi říct.",
-      context,
       contextSent: false,
     };
   }
 
   const result = await generateText({
-    system: systemPrompt(tone),
-    prompt: userPrompt(loaded.context, instruction, signature()),
+    system: prompt.promptSystem,
+    prompt: prompt.promptUser,
   });
 
   if ("error" in result) {
@@ -221,7 +240,7 @@ export async function composeEmail(
     // Podklady už do OpenAI odešly, i když model neodpověděl.
     return {
       ...fallback,
-      context,
+      ...prompt,
       source: "template",
       contextSent: true,
       error: `${result.error} Zobrazený návrh je ze šablony.`,
@@ -230,7 +249,7 @@ export async function composeEmail(
 
   return {
     ...splitDraft(result.text, fallback.subject),
-    context,
+    ...prompt,
     source: "ai",
     contextSent: true,
   };

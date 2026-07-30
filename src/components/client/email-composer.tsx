@@ -10,6 +10,28 @@ import {
 } from "@/app/actions/email";
 import { FormError, inputClasses } from "@/components/field";
 
+/** Kus zadání pro model. Jen ke čtení — do API jde přesně tenhle text. */
+function PromptBlock({
+  title,
+  text,
+}: {
+  title: string;
+  text: string | undefined;
+}) {
+  if (!text) return null;
+
+  return (
+    <details className="rounded border border-slate-200 bg-white">
+      <summary className="cursor-pointer px-2.5 py-1.5 text-xs text-slate-600">
+        {title}
+      </summary>
+      <pre className="max-h-64 overflow-auto border-t border-slate-100 px-2.5 py-2 text-xs whitespace-pre-wrap text-slate-700">
+        {text}
+      </pre>
+    </details>
+  );
+}
+
 const TONE_OPTIONS = [
   { value: "formal", label: "Formální" },
   { value: "friendly", label: "Přátelský" },
@@ -153,16 +175,24 @@ export function EmailComposer({
         ) : null}
       </form>
 
-      {draft?.context ? (
-        <details open className="rounded-lg bg-slate-50 p-3">
-          <summary className="cursor-pointer text-xs text-slate-600">
-            Podklady o zakázce
-            {draft.contextSent ? " (poslané do OpenAI)" : " (nikam se neposlaly)"}
-          </summary>
-          <pre className="mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap text-slate-700">
-            {draft.context}
-          </pre>
-        </details>
+      {draft?.promptUser ? (
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-medium text-slate-700">
+            Zadání pro model
+            <span className="font-normal text-slate-500">
+              {draft.contextSent
+                ? " — přesně toto odešlo do OpenAI"
+                : " — takto by to odešlo, teď se nikam neposlalo"}
+            </span>
+          </p>
+          <p className="text-xs text-slate-500">
+            Upravit to nejde, skládá aplikace. Zadání níž ovlivníte políčkem
+            „Co má e-mail říct“ a tónem.
+          </p>
+
+          <PromptBlock title="Pravidla pro model" text={draft.promptSystem} />
+          <PromptBlock title="Podklady a zadání" text={draft.promptUser} />
+        </div>
       ) : null}
 
       <hr className="border-slate-100" />

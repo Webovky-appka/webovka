@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildContextText,
-  firstName,
   isTone,
   splitDraft,
+  systemPrompt,
   templateDraft,
   userPrompt,
   type EmailContext,
 } from "./email-draft";
 
-const SIGNATURE = "Daniel, Stavba webu";
+const SIGNATURE = "Daniel Mitka\nStavba webu";
 
 function context(overrides: Partial<EmailContext> = {}): EmailContext {
   return {
@@ -49,16 +49,6 @@ function context(overrides: Partial<EmailContext> = {}): EmailContext {
   };
 }
 
-describe("oslovení", () => {
-  it("vezme z celého jména jen křestní", () => {
-    expect(firstName("Jana Nováková")).toBe("Jana");
-  });
-
-  it("vrátí null, když kontaktní osoba není", () => {
-    expect(firstName(null)).toBeNull();
-    expect(firstName("   ")).toBeNull();
-  });
-});
 
 describe("podklady pro model", () => {
   it("obsahuje klienta, fáze i nehotové úkoly aktuální fáze", () => {
@@ -112,28 +102,62 @@ describe("podklady pro model", () => {
 });
 
 describe("zadání pro model", () => {
-  it("nese podklady, zadání, oslovení i podpis", () => {
+  it("nese podklady, zadání, adresáta i podpis", () => {
     const prompt = userPrompt(context(), "Poproš o schválení návrhu", SIGNATURE);
 
+    expect(prompt).toContain("Pekárna U Nováků");
     expect(prompt).toContain("Zadání pro e-mail: Poproš o schválení návrhu");
-    expect(prompt).toContain(`Podpis: ${SIGNATURE}`);
+    expect(prompt).toContain("Komu píšeš: Jana Nováková");
+    expect(prompt).toContain(SIGNATURE);
   });
 
-  it("řekne modelu, ať jméno skloní do 5. pádu", () => {
+  /**
+   * Dřív tady stálo „Oslov jménem Jana v 5. pádě, tedy Dobrý den, Jana v 5.
+   * pádě,“ a model to vzal doslova — v e-mailu pak bylo „Dobrý den, Daniel v 5.
+   * pádě,“. Instrukce nesmí být uvnitř textu, který má model použít.
+   */
+  it("nedává jméno do věty, kterou by model mohl opsat do e-mailu", () => {
     const prompt = userPrompt(context(), "Cokoli", SIGNATURE);
 
-    expect(prompt).toContain("Jana v 5. pádě");
+    expect(prompt).not.toMatch(/Jana v 5\. pádě/);
+    expect(prompt).not.toMatch(/Dobrý den, Jana/);
   });
 
-  it("bez kontaktní osoby zadá obecné oslovení", () => {
+  it("bez kontaktní osoby řekne, ať se oslovuje obecně", () => {
     const prompt = userPrompt(
       context({ contactPerson: null }),
       "Cokoli",
       SIGNATURE,
     );
 
-    expect(prompt).toContain("Oslovení: Dobrý den,");
-    expect(prompt).not.toContain("5. pádě");
+    expect(prompt).toContain("kontaktní osoba není známá");
+  });
+});
+
+describe("pravidla pro model", () => {
+  it("popíšou skloňování do 5. pádu na cizích jménech", () => {
+    const rules = systemPrompt("friendly");
+
+    // Příklady musí být na jiných jménech, než jaká chodí v podkladech,
+    // jinak si model může splést příklad se jménem klienta.
+    expect(rules).toContain("5. pádu");
+    expect(rules).toContain("Jana → Jano");
+  });
+
+  it("mění oslovení podle tónu", () => {
+    expect(systemPrompt("formal")).toContain("pane Dvořáku");
+    expect(systemPrompt("friendly")).toContain("Dobrý den, Jano,");
+    expect(systemPrompt("short")).toContain("bez jména");
+  });
+
+  it("zakáže vypsat instrukce do e-mailu", () => {
+    expect(systemPrompt("formal")).toContain(
+      "Psát do e-mailu jakoukoli instrukci",
+    );
+  });
+
+  it("nechá podpis na pokoji", () => {
+    expect(systemPrompt("formal")).toContain("Podpis neměň");
   });
 });
 
