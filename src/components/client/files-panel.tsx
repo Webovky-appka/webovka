@@ -10,6 +10,7 @@ import {
   type AttachmentState,
 } from "@/app/actions/attachments";
 import { FormError } from "@/components/field";
+import { UploadField } from "@/components/upload-field";
 import { formatDate, formatFileSize } from "@/lib/format";
 
 const KIND_LABELS: Record<AttachmentKind, string> = {
@@ -70,20 +71,8 @@ export function FilesPanel({
         <input type="hidden" name="projectId" value={projectId} />
 
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-48 flex-1 space-y-1.5">
-            <label
-              htmlFor="file"
-              className="block text-sm font-medium text-slate-700"
-            >
-              Soubor
-            </label>
-            <input
-              id="file"
-              name="file"
-              type="file"
-              required
-              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-sm"
-            />
+          <div className="min-w-48 flex-1">
+            <UploadField id="file" label="Soubor" required />
           </div>
 
           <div className="space-y-1.5">
