@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { AuthorType, MessageKind } from "@prisma/client";
 
 import { PinGate } from "@/components/portal/pin-gate";
@@ -90,6 +91,16 @@ export default async function PortalPage(props: {
           files,
         }}
       />
+
+      {/* Klient má mít po ruce, jak se s jeho údaji zachází. */}
+      <p className="mx-auto flex max-w-3xl flex-wrap justify-center gap-4 px-4 pb-8 text-xs text-slate-400">
+        <Link href="/privacy" className="transition hover:text-slate-600">
+          Zásady ochrany osobních údajů
+        </Link>
+        <Link href="/terms" className="transition hover:text-slate-600">
+          Podmínky užívání
+        </Link>
+      </p>
     </main>
   );
 }
