@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth";
@@ -34,6 +35,15 @@ export default async function LoginPage(props: {
 
         <p className="mt-6 text-center text-xs text-slate-400">
           Přístup mají jen účty založené správcem. Registrace není otevřená.
+        </p>
+
+        <p className="mt-3 flex flex-wrap justify-center gap-3 text-xs text-slate-400">
+          <Link href="/privacy" className="transition hover:text-slate-600">
+            Zásady ochrany osobních údajů
+          </Link>
+          <Link href="/terms" className="transition hover:text-slate-600">
+            Podmínky užívání
+          </Link>
         </p>
       </div>
     </main>
