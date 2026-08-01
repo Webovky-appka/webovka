@@ -587,6 +587,9 @@ model SalesRun {
   status     SalesRunStatus @default(QUEUED)
   stats      Json?
   error      String?
+  /// Rezervace pro právě probíhající tick. Dva souběžné ticky (řetěz +
+  /// pojistka ze stránky) si běh nepřeberou — druhý bez rezervace odejde.
+  claimedUntil DateTime?
   startedAt  DateTime?
   finishedAt DateTime?
   createdAt  DateTime       @default(now())

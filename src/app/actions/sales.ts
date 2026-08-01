@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as z from "zod";
 
+import { isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
@@ -185,4 +186,52 @@ export async function savePrompt(
   return version === null
     ? { success: "Text se nezměnil, verze zůstává." }
     : { success: `Uloženo jako verze ${version}. Použije se od příštího běhu.` };
+}
+
+/**
+ * Založí běh kampaně a přesměruje na jeho stránku — ta běh krokuje, dokud
+ * neskončí. Souběžný druhý běh téže kampaně se nezakládá.
+ */
+export async function startRun(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  await requireUser();
+
+  const campaignId = formData.get("campaignId");
+  if (typeof campaignId !== "string" || campaignId === "") {
+    return { error: "Chybí identifikátor kampaně." };
+  }
+
+  if (!isAiConfigured()) {
+    return {
+      error: "Bez OPENAI_API_KEY agenti neběží. Doplňte klíč do prostředí.",
+    };
+  }
+
+  const campaign = await prisma.salesCampaign.findUnique({
+    where: { id: campaignId },
+    select: { status: true },
+  });
+  if (!campaign) return { error: "Kampaň nenalezena." };
+  if (campaign.status !== "ACTIVE") {
+    return { error: "Kampaň není aktivní. Spustit jde jen aktivní kampaň." };
+  }
+
+  const running = await prisma.salesRun.findFirst({
+    where: { campaignId, status: { in: ["QUEUED", "RUNNING"] } },
+    select: { id: true },
+  });
+  if (running) {
+    // Neotvírat druhý běh, ale dovést uživatele k tomu rozjetému.
+    redirect(`/sales/runs/${running.id}`);
+  }
+
+  const run = await prisma.salesRun.create({
+    data: { campaignId },
+    select: { id: true },
+  });
+
+  revalidatePath(`/sales/${campaignId}`);
+  redirect(`/sales/runs/${run.id}`);
 }
