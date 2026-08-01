@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
+import { googleAccountFor } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import {
   EVIDENCE_LABELS,
@@ -53,19 +55,28 @@ type Findings = {
 export default async function LeadPage(props: {
   params: Promise<{ id: string }>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await props.params;
 
   const lead = await prisma.salesLead.findUnique({
     where: { id },
     include: {
-      prospect: { include: { contacts: true } },
+      prospect: { include: { contacts: { orderBy: { isPrimary: "desc" } } } },
       campaign: { select: { id: true, name: true } },
       audits: { orderBy: { createdAt: "desc" }, take: 1 },
+      emails: { orderBy: { createdAt: "desc" }, take: 1 },
       activities: { orderBy: { createdAt: "desc" }, take: 50 },
     },
   });
   if (!lead) notFound();
+
+  const draft = lead.emails[0] ?? null;
+  const gmailAccount =
+    draft?.status === "DRAFT" ? await googleAccountFor(user.id) : null;
+  const primaryContact =
+    lead.prospect.contacts.find((contact) => contact.isPrimary) ??
+    lead.prospect.contacts.find((contact) => contact.email) ??
+    null;
 
   const audit = lead.audits[0] ?? null;
   const findings = (audit?.findings ?? {}) as Findings;
@@ -148,6 +159,69 @@ export default async function LeadPage(props: {
           </div>
         </dl>
       </section>
+
+      {lead.prospect.contacts.length > 0 ? (
+        <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-slate-900">Kontakty</h2>
+          <ul className="space-y-1.5 text-sm">
+            {lead.prospect.contacts.map((contact) => (
+              <li
+                key={contact.id}
+                className="flex flex-wrap items-baseline gap-2"
+              >
+                <span className="text-slate-900">
+                  {contact.name ?? "Obecný kontakt"}
+                  {contact.role ? ` (${contact.role})` : ""}
+                </span>
+                {contact.email ? (
+                  <span className="text-slate-700">{contact.email}</span>
+                ) : null}
+                {contact.phone ? (
+                  <span className="text-slate-500">{contact.phone}</span>
+                ) : null}
+                <span className="text-xs text-slate-400">
+                  {contact.source ?? "bez zdroje"} · confidence{" "}
+                  {Math.round(contact.confidence * 100)} %
+                  {contact.isPrimary ? " · primární" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {draft && draft.status === "DRAFT" ? (
+        <ReviewPanel
+          draft={{
+            id: draft.id,
+            subject: draft.subject,
+            body: draft.body,
+            strategy: draft.strategy,
+          }}
+          leadId={lead.id}
+          defaultTo={primaryContact?.email ?? ""}
+          gmailAddress={gmailAccount?.email ?? null}
+        />
+      ) : null}
+
+      {draft && draft.status !== "DRAFT" ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">
+              {draft.status === "SENT" ? "Odeslaný e-mail" : "Zamítnutý návrh"}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {draft.sentAt ? formatDateTime(draft.sentAt) : ""}
+            </p>
+          </div>
+          <p className="mt-2 text-sm font-medium text-slate-900">
+            {draft.subject}
+          </p>
+          <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600">
+            {draft.body}
+          </p>
+        </section>
+      ) : null}
 
       {audit ? (
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">

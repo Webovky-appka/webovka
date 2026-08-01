@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { auditLead } from "@/lib/sales/auditor";
+import { researchContact } from "@/lib/sales/contact";
+import { draftOutreach } from "@/lib/sales/outreach";
 import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
 
 /**
@@ -22,6 +24,10 @@ const QUALIFY_PER_TICK = 2;
 
 /** Audit je velké volání, na tick jde jeden. */
 const AUDIT_PER_TICK = 1;
+
+/** Contact research volá web search, na tick jeden. Návrhy e-mailů po dvou. */
+const CONTACT_PER_TICK = 1;
+const OUTREACH_PER_TICK = 2;
 
 /** Po kolika neúspěších se lead přestane zkoušet a přeskočí se. */
 const MAX_ATTEMPTS = 2;
@@ -44,6 +50,10 @@ export type RunStats = {
   overLimit: number;
   audited: number;
   auditAttempts: Record<string, number>;
+  contacts: number;
+  contactAttempts: Record<string, number>;
+  drafts: number;
+  outreachAttempts: Record<string, number>;
   errors: string[];
   log: { at: string; text: string }[];
 };
@@ -60,6 +70,10 @@ const EMPTY_STATS: RunStats = {
   overLimit: 0,
   audited: 0,
   auditAttempts: {},
+  contacts: 0,
+  contactAttempts: {},
+  drafts: 0,
+  outreachAttempts: {},
   errors: [],
   log: [],
 };
@@ -99,16 +113,50 @@ async function saveRun(
   });
 }
 
-/** Kvalifikované leady z tohoto běhu bez auditu. */
-async function pendingAuditIds(stats: RunStats): Promise<string[]> {
-  if (stats.leadIds.length === 0) return [];
+/**
+ * Fáze po kvalifikaci se dívají na celou kampaň, ne jen na leady z tohoto
+ * běhu — běh tak posbírá i leady, které dřívější běh nechal na půli cesty
+ * (spadlý audit, restart). Limity pokusů drží mapa v statistikách běhu,
+ * takže jeden běh nikdy nezkouší totéž donekonečna.
+ */
 
+/** Leady s auditem čekající na dohledání kontaktu (stav QUALIFIED + audit). */
+async function pendingContactIds(
+  stats: RunStats,
+  campaignId: string,
+): Promise<string[]> {
   const waiting = await prisma.salesLead.findMany({
-    where: {
-      id: { in: stats.leadIds },
-      status: "QUALIFIED",
-      audits: { none: {} },
-    },
+    where: { campaignId, status: "QUALIFIED", audits: { some: {} } },
+    select: { id: true },
+  });
+
+  return waiting
+    .map((lead) => lead.id)
+    .filter((id) => (stats.contactAttempts[id] ?? 0) < MAX_ATTEMPTS);
+}
+
+/** Leady po contact researchi čekající na návrh e-mailu. */
+async function pendingOutreachIds(
+  stats: RunStats,
+  campaignId: string,
+): Promise<string[]> {
+  const waiting = await prisma.salesLead.findMany({
+    where: { campaignId, status: "RESEARCHING" },
+    select: { id: true },
+  });
+
+  return waiting
+    .map((lead) => lead.id)
+    .filter((id) => (stats.outreachAttempts[id] ?? 0) < MAX_ATTEMPTS);
+}
+
+/** Kvalifikované leady kampaně bez auditu. */
+async function pendingAuditIds(
+  stats: RunStats,
+  campaignId: string,
+): Promise<string[]> {
+  const waiting = await prisma.salesLead.findMany({
+    where: { campaignId, status: "QUALIFIED", audits: { none: {} } },
     select: { id: true },
   });
 
@@ -132,6 +180,7 @@ async function pendingLeadIds(stats: RunStats): Promise<string[]> {
 }
 
 export async function tickRun(runId: string): Promise<RunSnapshot | null> {
+  const SENDER_FALLBACK = "Mitsov Web";
   const run = await prisma.salesRun.findUnique({
     where: { id: runId },
     include: { campaign: true },
@@ -239,7 +288,7 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
 
   // Krok 3: hluboký audit kvalifikovaných — až po dokončené kvalifikaci,
   // aby se drahé volání nedělalo u leadů, které by kvalifikace zamítla.
-  const pendingAudits = await pendingAuditIds(stats);
+  const pendingAudits = await pendingAuditIds(stats, run.campaignId);
   for (const leadId of pendingAudits.slice(0, AUDIT_PER_TICK)) {
     stats.auditAttempts[leadId] = (stats.auditAttempts[leadId] ?? 0) + 1;
 
@@ -259,17 +308,93 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
     log(stats, `Audit dokončen, výsledné skóre ${outcome.finalScore}.`);
   }
 
-  const remainingAudits = await pendingAuditIds(stats);
+  const remainingAudits = await pendingAuditIds(stats, run.campaignId);
+  if (remainingAudits.length > 0) {
+    await saveRun(runId, stats);
+    return {
+      id: run.id,
+      status: "RUNNING",
+      stats,
+      pending: remainingAudits.length,
+    };
+  }
 
-  if (remainingAudits.length === 0) {
+  // Krok 4: dohledání kontaktů k auditovaným leadům.
+  const pendingContacts = await pendingContactIds(stats, run.campaignId);
+  for (const leadId of pendingContacts.slice(0, CONTACT_PER_TICK)) {
+    stats.contactAttempts[leadId] = (stats.contactAttempts[leadId] ?? 0) + 1;
+
+    const outcome = await researchContact({
+      leadId,
+      campaign: run.campaign,
+      runId: run.id,
+    });
+
+    if (!outcome.ok) {
+      stats.errors.push(`Kontakt ${leadId}: ${outcome.error}`);
+      log(stats, `Dohledání kontaktu selhalo: ${outcome.error}`);
+      continue;
+    }
+
+    stats.contacts += 1;
     log(
       stats,
-      `Hotovo: ${stats.qualified} kvalifikovaných, ${stats.audited} auditovaných, ${stats.rejected} zamítnutých, ${stats.overLimit} nad limit.`,
+      outcome.found === 0
+        ? "Kontakt se nedohledal, doplní se při schvalování."
+        : `Dohledáno ${outcome.found} kontaktů (${outcome.withEmail} s e-mailem).`,
+    );
+  }
+
+  const remainingContacts = await pendingContactIds(stats, run.campaignId);
+  if (remainingContacts.length > 0) {
+    await saveRun(runId, stats);
+    return {
+      id: run.id,
+      status: "RUNNING",
+      stats,
+      pending: remainingContacts.length,
+    };
+  }
+
+  // Krok 5: návrhy e-mailů. Lead končí ve stavu READY_FOR_REVIEW —
+  // odeslání je vždycky na člověku.
+  const pendingOutreach = await pendingOutreachIds(stats, run.campaignId);
+  for (const leadId of pendingOutreach.slice(0, OUTREACH_PER_TICK)) {
+    stats.outreachAttempts[leadId] = (stats.outreachAttempts[leadId] ?? 0) + 1;
+
+    const outcome = await draftOutreach({
+      leadId,
+      campaign: run.campaign,
+      runId: run.id,
+      senderName: SENDER_FALLBACK,
+    });
+
+    if (!outcome.ok) {
+      stats.errors.push(`Outreach ${leadId}: ${outcome.error}`);
+      log(stats, `Návrh e-mailu selhal: ${outcome.error}`);
+      continue;
+    }
+
+    stats.drafts += 1;
+    log(stats, `Návrh e-mailu připraven (${outcome.strategy}).`);
+  }
+
+  const remainingOutreach = await pendingOutreachIds(stats, run.campaignId);
+
+  if (remainingOutreach.length === 0) {
+    log(
+      stats,
+      `Hotovo: ${stats.qualified} kvalifikovaných, ${stats.audited} auditovaných, ${stats.drafts} návrhů ke schválení, ${stats.rejected} zamítnutých.`,
     );
     await saveRun(runId, stats, { status: "COMPLETED", finishedAt: new Date() });
     return { id: run.id, status: "COMPLETED", stats, pending: 0 };
   }
 
   await saveRun(runId, stats);
-  return { id: run.id, status: "RUNNING", stats, pending: remainingAudits.length };
+  return {
+    id: run.id,
+    status: "RUNNING",
+    stats,
+    pending: remainingOutreach.length,
+  };
 }

@@ -7,6 +7,7 @@ import * as z from "zod";
 
 import { isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { sendGmail } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
 
@@ -234,4 +235,251 @@ export async function startRun(
 
   revalidatePath(`/sales/${campaignId}`);
   redirect(`/sales/runs/${run.id}`);
+}
+
+const EmailFieldsSchema = z.object({
+  to: z.string().trim().pipe(z.email("Zadejte platnou e-mailovou adresu.")),
+  subject: z.string().trim().min(1, "Zadejte předmět.").max(150),
+  body: z
+    .string()
+    .trim()
+    .min(20, "E-mail je podezřele krátký.")
+    .transform((value) => value.replace(/\r\n/g, "\n")),
+});
+
+/**
+ * Uloží adresáta ke kontaktům firmy. Ručně zadaná adresa při schvalování je
+ * nejjistější údaj, jaký máme — přepíše primární kontakt.
+ */
+async function upsertRecipient(prospectId: string, email: string) {
+  const existing = await prisma.salesContact.findFirst({
+    where: { prospectId, email },
+    select: { id: true, isPrimary: true },
+  });
+
+  if (existing) {
+    if (!existing.isPrimary) {
+      await prisma.salesContact.updateMany({
+        where: { prospectId },
+        data: { isPrimary: false },
+      });
+      await prisma.salesContact.update({
+        where: { id: existing.id },
+        data: { isPrimary: true },
+      });
+    }
+    return;
+  }
+
+  await prisma.salesContact.updateMany({
+    where: { prospectId },
+    data: { isPrimary: false },
+  });
+  await prisma.salesContact.create({
+    data: {
+      prospectId,
+      email,
+      source: "ručně doplněno při schvalování",
+      confidence: 1,
+      isPrimary: true,
+    },
+  });
+}
+
+async function loadDraft(draftId: string) {
+  return prisma.salesEmailDraft.findUnique({
+    where: { id: draftId },
+    include: {
+      lead: { include: { prospect: true } },
+    },
+  });
+}
+
+/** Uloží úpravy návrhu bez odeslání. */
+export async function saveEmailDraft(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const parsed = EmailFieldsSchema.safeParse({
+    to: formData.get("to"),
+    subject: formData.get("subject"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neplatný vstup." };
+  }
+
+  const draft = await loadDraft(draftId);
+  if (!draft || draft.status !== "DRAFT") {
+    return { error: "Návrh nenalezen, nebo už není rozpracovaný." };
+  }
+
+  await prisma.salesEmailDraft.update({
+    where: { id: draftId },
+    data: { subject: parsed.data.subject, body: parsed.data.body },
+  });
+  await upsertRecipient(draft.lead.prospectId, parsed.data.to);
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  return { success: "Návrh uložen. Nic se neodeslalo." };
+}
+
+/**
+ * Schválení a odeslání přes Gmail přihlášeného uživatele. Jediné místo,
+ * kudy cold e-mail opouští aplikaci — a stojí za ním kliknutí člověka.
+ */
+export async function approveAndSendEmail(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const parsed = EmailFieldsSchema.safeParse({
+    to: formData.get("to"),
+    subject: formData.get("subject"),
+    body: formData.get("body"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neplatný vstup." };
+  }
+
+  const draft = await loadDraft(draftId);
+  if (!draft || draft.status !== "DRAFT") {
+    return { error: "Návrh nenalezen, nebo už byl vyřízen." };
+  }
+
+  const account = await prisma.googleAccount.findUnique({
+    where: { userId: user.id },
+    select: { email: true },
+  });
+  if (!account) {
+    return {
+      error:
+        "Účet není napojený na Gmail — napojte ho v Nastavení, nebo použijte Označit jako odeslaný.",
+    };
+  }
+
+  const sent = await sendGmail({
+    userId: user.id,
+    from: account.email,
+    fromName: user.name,
+    to: parsed.data.to,
+    subject: parsed.data.subject,
+    body: parsed.data.body,
+  });
+  if ("error" in sent) return { error: sent.error };
+
+  const now = new Date();
+  await prisma.salesEmailDraft.update({
+    where: { id: draftId },
+    data: {
+      subject: parsed.data.subject,
+      body: parsed.data.body,
+      status: "SENT",
+      approvedAt: now,
+      sentAt: now,
+      approvedById: user.id,
+    },
+  });
+  await upsertRecipient(draft.lead.prospectId, parsed.data.to);
+  await prisma.salesLead.update({
+    where: { id: draft.leadId },
+    data: { status: "CONTACTED" },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.leadId,
+      actor: "user",
+      kind: "sent",
+      body: `${user.name} schválil a odeslal e-mail na ${parsed.data.to} (z ${account.email}).`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  revalidatePath(`/sales/${draft.lead.campaignId}`);
+  return { success: `Odesláno na ${parsed.data.to}. Lead je ve stavu Osloven.` };
+}
+
+/** Označí e-mail za odeslaný bez odeslání — když odešel jinou cestou. */
+export async function markEmailSentManually(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const draft = await loadDraft(draftId);
+  if (!draft || draft.status !== "DRAFT") {
+    return { error: "Návrh nenalezen, nebo už byl vyřízen." };
+  }
+
+  const now = new Date();
+  await prisma.salesEmailDraft.update({
+    where: { id: draftId },
+    data: { status: "SENT", approvedAt: now, sentAt: now, approvedById: user.id },
+  });
+  await prisma.salesLead.update({
+    where: { id: draft.leadId },
+    data: { status: "CONTACTED" },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.leadId,
+      actor: "user",
+      kind: "sent_manually",
+      body: `${user.name} označil e-mail jako odeslaný mimo aplikaci.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  revalidatePath(`/sales/${draft.lead.campaignId}`);
+  return { success: "Označeno jako odeslané. Lead je ve stavu Osloven." };
+}
+
+/** Zamítnutí leadu při review. Důvod se ukládá — Coach z něj bude jednou žít. */
+export async function rejectLead(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, status: true },
+  });
+  if (!lead) return { error: "Lead nenalezen." };
+  if (lead.status === "CONTACTED") {
+    return { error: "Oslovený lead už zamítnout nejde." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: "REJECTED", lostReason: reason || "zamítnuto při review" },
+  });
+  await prisma.salesEmailDraft.updateMany({
+    where: { leadId, status: "DRAFT" },
+    data: { status: "REJECTED" },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "rejected",
+      body: `${user.name} lead zamítl${reason ? `: ${reason}` : "."}`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  return { success: "Lead zamítnut. Firma je půl roku v cooldownu." };
 }
