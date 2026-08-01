@@ -3,6 +3,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { auditLead } from "@/lib/sales/auditor";
 import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
 
 /**
@@ -18,6 +19,9 @@ import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
 
 /** Kolik leadů se kvalifikuje v jednom ticku. Málo, ať se tick vejde do limitu. */
 const QUALIFY_PER_TICK = 2;
+
+/** Audit je velké volání, na tick jde jeden. */
+const AUDIT_PER_TICK = 1;
 
 /** Po kolika neúspěších se lead přestane zkoušet a přeskočí se. */
 const MAX_ATTEMPTS = 2;
@@ -38,6 +42,8 @@ export type RunStats = {
   qualified: number;
   rejected: number;
   overLimit: number;
+  audited: number;
+  auditAttempts: Record<string, number>;
   errors: string[];
   log: { at: string; text: string }[];
 };
@@ -52,6 +58,8 @@ const EMPTY_STATS: RunStats = {
   qualified: 0,
   rejected: 0,
   overLimit: 0,
+  audited: 0,
+  auditAttempts: {},
   errors: [],
   log: [],
 };
@@ -89,6 +97,24 @@ async function saveRun(
       claimedUntil: null,
     },
   });
+}
+
+/** Kvalifikované leady z tohoto běhu bez auditu. */
+async function pendingAuditIds(stats: RunStats): Promise<string[]> {
+  if (stats.leadIds.length === 0) return [];
+
+  const waiting = await prisma.salesLead.findMany({
+    where: {
+      id: { in: stats.leadIds },
+      status: "QUALIFIED",
+      audits: { none: {} },
+    },
+    select: { id: true },
+  });
+
+  return waiting
+    .map((lead) => lead.id)
+    .filter((id) => (stats.auditAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
 
 /** Leady z tohoto běhu, které ještě čekají na kvalifikaci. */
@@ -200,17 +226,50 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
     else stats.overLimit += 1;
   }
 
-  const remaining = await pendingLeadIds(stats);
+  const remainingQualify = await pendingLeadIds(stats);
+  if (remainingQualify.length > 0) {
+    await saveRun(runId, stats);
+    return {
+      id: run.id,
+      status: "RUNNING",
+      stats,
+      pending: remainingQualify.length,
+    };
+  }
 
-  if (remaining.length === 0) {
+  // Krok 3: hluboký audit kvalifikovaných — až po dokončené kvalifikaci,
+  // aby se drahé volání nedělalo u leadů, které by kvalifikace zamítla.
+  const pendingAudits = await pendingAuditIds(stats);
+  for (const leadId of pendingAudits.slice(0, AUDIT_PER_TICK)) {
+    stats.auditAttempts[leadId] = (stats.auditAttempts[leadId] ?? 0) + 1;
+
+    const outcome = await auditLead({
+      leadId,
+      campaign: run.campaign,
+      runId: run.id,
+    });
+
+    if (!outcome.ok) {
+      stats.errors.push(`Audit ${leadId}: ${outcome.error}`);
+      log(stats, `Audit leadu selhal: ${outcome.error}`);
+      continue;
+    }
+
+    stats.audited += 1;
+    log(stats, `Audit dokončen, výsledné skóre ${outcome.finalScore}.`);
+  }
+
+  const remainingAudits = await pendingAuditIds(stats);
+
+  if (remainingAudits.length === 0) {
     log(
       stats,
-      `Hotovo: ${stats.qualified} kvalifikovaných, ${stats.rejected} zamítnutých, ${stats.overLimit} nad limit.`,
+      `Hotovo: ${stats.qualified} kvalifikovaných, ${stats.audited} auditovaných, ${stats.rejected} zamítnutých, ${stats.overLimit} nad limit.`,
     );
     await saveRun(runId, stats, { status: "COMPLETED", finishedAt: new Date() });
     return { id: run.id, status: "COMPLETED", stats, pending: 0 };
   }
 
   await saveRun(runId, stats);
-  return { id: run.id, status: "RUNNING", stats, pending: remaining.length };
+  return { id: run.id, status: "RUNNING", stats, pending: remainingAudits.length };
 }
