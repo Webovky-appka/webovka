@@ -157,9 +157,12 @@ export default async function CampaignPage(props: {
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-900">
+                    <Link
+                      href={`/sales/leads/${lead.id}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
                       {lead.prospect.name}
-                    </p>
+                    </Link>
                     {lead.prospect.domain ? (
                       <a
                         href={`https://${lead.prospect.domain}`}

@@ -21,6 +21,7 @@ const TIMEOUT_MS = 120_000;
 const MODEL_ROUTING: Record<string, { env: string; fallback: string }> = {
   "scout-discover": { env: "SALES_MODEL_DISCOVER", fallback: "gpt-4o" },
   "scout-qualify": { env: "SALES_MODEL_QUALIFY", fallback: "gpt-4o-mini" },
+  audit: { env: "SALES_MODEL_AUDIT", fallback: "gpt-4o" },
 };
 
 export function resolveModel(task: string): string {
