@@ -64,6 +64,12 @@ export default async function InternalLayout({
                 Smlouvy
               </Link>
               <Link
+                href="/sales"
+                className="text-slate-600 transition hover:text-slate-900"
+              >
+                AI Sales
+              </Link>
+              <Link
                 href="/settings"
                 className="text-slate-600 transition hover:text-slate-900"
               >

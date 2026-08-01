@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/session";
 
 /** Cesty interní části. Mimo ně proxy jen doplňuje bezpečnostní hlavičky. */
-const INTERNAL_PATH = /^\/(projects|clients|settings|docs|contracts)(\/|$)/;
+const INTERNAL_PATH = /^\/(projects|clients|settings|docs|contracts|sales)(\/|$)/;
 
 function buildCsp(nonce: string, isDev: boolean): string {
   return [

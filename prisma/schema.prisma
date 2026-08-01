@@ -67,6 +67,9 @@ model User {
   googleAccount  GoogleAccount?
   projectDocs    ProjectDoc[]
   contracts      Contract[]
+
+  salesEmailApprovals SalesEmailDraft[]
+  salesPromptVersions SalesPromptVersion[]
 }
 
 /**
@@ -377,4 +380,271 @@ model ProjectDoc {
   createdAt   DateTime @default(now())
 
   @@index([projectId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// AI Sales Engine — akviziční doména. Záměrně oddělená od dodací části
+// (Client, Project): Prospect je firma, kterou teprve oslovujeme. Až lead
+// vyhraje, založí se z něj Client ručně — dřív se domény nepotkají.
+// ---------------------------------------------------------------------------
+
+enum SalesCampaignStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+/// Životní cyklus leadu podle sekce 15.1 specifikace.
+enum SalesLeadStatus {
+  DISCOVERED
+  QUALIFYING
+  QUALIFIED
+  RESEARCHING
+  DESIGNING
+  READY_FOR_REVIEW
+  APPROVED
+  CONTACTED
+  REPLIED
+  MEETING
+  PROPOSAL
+  WON
+  LOST
+  REJECTED
+}
+
+enum SalesRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AgentRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SalesEmailStatus {
+  DRAFT
+  APPROVED
+  SENT
+  REJECTED
+}
+
+/// Kampaň: segment, mise a limity. Mise se mění v aplikaci bez nasazení —
+/// stabilní identitu agenta drží SalesPromptVersion, misi kampaň.
+model SalesCampaign {
+  id         String              @id @default(cuid())
+  name       String
+  mission    String
+  segment    String?
+  geography  String?
+  /// Nejvýš tolik kvalifikovaných leadů z jednoho běhu.
+  dailyLimit Int                 @default(8)
+  /// Pod tímhle skóre se lead rovnou zamítá.
+  minScore   Int                 @default(60)
+  status     SalesCampaignStatus @default(ACTIVE)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  leads     SalesLead[]
+  runs      SalesRun[]
+  agentRuns AgentRun[]
+}
+
+/// Objevená firma. Jedna firma může projít víc kampaněmi — deduplikace
+/// a cooldown se řídí tady, ne na leadu.
+model Prospect {
+  id          String   @id @default(cuid())
+  name        String
+  /// Doména webu bez protokolu, klíč pro deduplikaci.
+  domain      String?  @unique
+  industry    String?
+  location    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  leads      SalesLead[]
+  contacts   SalesContact[]
+  activities SalesActivity[]
+}
+
+model SalesLead {
+  id             String          @id @default(cuid())
+  prospectId     String
+  campaignId     String
+  status         SalesLeadStatus @default(DISCOVERED)
+  /// Výsledné skóre příležitosti 0–100 podle rubriky v sekci 8.
+  score          Int?
+  businessScore  Int?
+  websiteScore   Int?
+  /// Digital gap: síla firmy minus kvalita webu (sekce 8.1).
+  opportunityGap Int?
+  /// Proč jsme firmu vybrali. Ukazuje se v review, píše ho Scout.
+  reason         String?
+  lostReason     String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  prospect   Prospect          @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  campaign   SalesCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  audits     SalesAudit[]
+  emails     SalesEmailDraft[]
+  activities SalesActivity[]
+  agentRuns  AgentRun[]
+
+  @@unique([prospectId, campaignId])
+  @@index([campaignId, status])
+  @@index([status])
+}
+
+/// Kontakt s povinným původem. Bez zdroje a confidence se nesmí použít —
+/// systém nikdy nehádá e-mail (sekce 10).
+model SalesContact {
+  id         String   @id @default(cuid())
+  prospectId String
+  name       String?
+  role       String?
+  email      String?
+  phone      String?
+  source     String?
+  confidence Float    @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  @@index([prospectId])
+}
+
+model SalesAudit {
+  id               String   @id @default(cuid())
+  leadId           String
+  visualScore      Int?
+  uxScore          Int?
+  mobileScore      Int?
+  conversionScore  Int?
+  seoScore         Int?
+  performanceScore Int?
+  /// Strukturované nálezy: silné stránky, problémy, doporučení, evidence.
+  findings         Json?
+  summary          String?
+  confidence       Float?
+  createdAt        DateTime @default(now())
+
+  lead SalesLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model SalesEmailDraft {
+  id              String           @id @default(cuid())
+  leadId          String
+  subject         String
+  body            String
+  /// Zvolená strategie hooku: visual, observation, business (sekce 13.2).
+  strategy        String?
+  promptVersionId String?
+  status          SalesEmailStatus @default(DRAFT)
+  createdAt       DateTime         @default(now())
+  approvedAt      DateTime?
+  sentAt          DateTime?
+  approvedById    String?
+
+  lead          SalesLead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  promptVersion SalesPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+  approvedBy    User?               @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([status])
+}
+
+/// Timeline firmy i leadu — CRM paměť, work log agentů a doklad v jednom
+/// (sekce 15, 16 a 28). Zápisy se nemažou.
+model SalesActivity {
+  id         String   @id @default(cuid())
+  prospectId String
+  leadId     String?
+  /// Kdo zápis vytvořil: scout, auditor, contact, outreach, system, user.
+  actor      String
+  kind       String
+  body       String
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  prospect Prospect   @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  lead     SalesLead? @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([prospectId, createdAt])
+  @@index([leadId, createdAt])
+}
+
+/// Jeden běh kampaně, typicky denní (sekce 22 a 37).
+model SalesRun {
+  id         String         @id @default(cuid())
+  campaignId String
+  status     SalesRunStatus @default(QUEUED)
+  stats      Json?
+  error      String?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime       @default(now())
+
+  campaign  SalesCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  agentRuns AgentRun[]
+
+  @@index([campaignId, createdAt])
+}
+
+/// Jeden běh jednoho agenta — observabilita, cena a data lineage
+/// (sekce 18.7 a 34). Zásadní tabulka celého systému.
+model AgentRun {
+  id              String         @id @default(cuid())
+  agent           String
+  runId           String?
+  campaignId      String?
+  leadId          String?
+  status          AgentRunStatus @default(RUNNING)
+  input           Json?
+  output          Json?
+  summary         String?
+  model           String?
+  promptVersionId String?
+  tokensIn        Int            @default(0)
+  tokensOut       Int            @default(0)
+  /// Cena v mikrodolarech (1 USD = 1 000 000), ať se nesčítají floaty.
+  costMicroUsd    Int            @default(0)
+  error           String?
+  startedAt       DateTime       @default(now())
+  finishedAt      DateTime?
+
+  run           SalesRun?           @relation(fields: [runId], references: [id], onDelete: SetNull)
+  campaign      SalesCampaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  lead          SalesLead?          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  promptVersion SalesPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
+
+  @@index([agent, startedAt])
+  @@index([runId])
+  @@index([leadId])
+}
+
+/// Verze system promptů agentů (sekce 19). Aktivní je nejvýš jedna na agenta,
+/// staré verze se nemažou — běhy na ně odkazují.
+model SalesPromptVersion {
+  id          String   @id @default(cuid())
+  agent       String
+  version     Int
+  system      String
+  notes       String?
+  active      Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  createdBy User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  emails    SalesEmailDraft[]
+  agentRuns AgentRun[]
+
+  @@unique([agent, version])
+  @@index([agent, active])
 }
