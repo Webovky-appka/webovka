@@ -9,7 +9,11 @@ import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
  * Běh kampaně jako stavový stroj krokovaný zvenčí. Jeden tick udělá omezený
  * kus práce a vrátí stav — dlouhá práce se tak nedrží v jednom requestu
  * (sekce 35 specifikace) a pád jednoho kroku neshodí celý běh (sekce 36).
- * Ticky řídí otevřená stránka běhu; plánovač je přijde jen doplnit.
+ *
+ * Ticky si řetězí server sám (route handler po odpovědi zavolá další tick);
+ * stránka běhu stav jen zobrazuje a slouží jako pojistka, kdyby řetěz umřel
+ * s restartem serveru. Souběh hlídá rezervace claimedUntil — atomický zápis,
+ * druhý tick bez rezervace odejde bez práce.
  */
 
 /** Kolik leadů se kvalifikuje v jednom ticku. Málo, ať se tick vejde do limitu. */
@@ -17,6 +21,12 @@ const QUALIFY_PER_TICK = 2;
 
 /** Po kolika neúspěších se lead přestane zkoušet a přeskočí se. */
 const MAX_ATTEMPTS = 2;
+
+/**
+ * Jak dlouho platí rezervace ticku. Déle než timeout volání modelu, aby
+ * rezervace nevypršela uprostřed práce; po pádu serveru se běh sám uvolní.
+ */
+const CLAIM_MS = 150_000;
 
 export type RunStats = {
   discovered: boolean;
@@ -72,7 +82,12 @@ async function saveRun(
 ): Promise<void> {
   await prisma.salesRun.update({
     where: { id: runId },
-    data: { ...data, stats: stats as unknown as Prisma.InputJsonValue },
+    data: {
+      ...data,
+      stats: stats as unknown as Prisma.InputJsonValue,
+      // Tick končí, rezervace se vrací. Další tick si ji vezme hned.
+      claimedUntil: null,
+    },
   });
 }
 
@@ -103,15 +118,23 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
     return { id: run.id, status: run.status, stats, pending: 0 };
   }
 
-  // Převzetí běhu podmíněným zápisem — dva souběžné ticky ho nespustí dvakrát.
-  if (run.status === "QUEUED") {
-    const claimed = await prisma.salesRun.updateMany({
-      where: { id: runId, status: "QUEUED" },
-      data: { status: "RUNNING", startedAt: new Date() },
-    });
-    if (claimed.count === 0) {
-      return { id: run.id, status: "RUNNING", stats, pending: 0 };
-    }
+  // Rezervace běhu na dobu jednoho ticku. Kdo ji nezíská, jen vrátí stav —
+  // ticky se potkávají (řetěz + pojistka ze stránky) a práce smí běžet jednou.
+  const now = new Date();
+  const claimed = await prisma.salesRun.updateMany({
+    where: {
+      id: runId,
+      status: { in: ["QUEUED", "RUNNING"] },
+      OR: [{ claimedUntil: null }, { claimedUntil: { lt: now } }],
+    },
+    data: {
+      status: "RUNNING",
+      claimedUntil: new Date(now.getTime() + CLAIM_MS),
+      ...(run.status === "QUEUED" ? { startedAt: now } : {}),
+    },
+  });
+  if (claimed.count === 0) {
+    return { id: run.id, status: "RUNNING", stats, pending: -1 };
   }
 
   // Krok 1: objevování kandidátů. Jeden tick, jedno volání s web search.
