@@ -37,6 +37,35 @@ type ResponsesOutputItem = {
   content?: { type: string; text?: string }[];
 };
 
+export type AgentImage = { label: string; data: Buffer; mimeType: string };
+
+type UserContentPart =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail: "auto" };
+
+/**
+ * Obsah uživatelské zprávy. Bez obrázků prostý text (levnější serializace),
+ * s obrázky pole částí — obrázky jdou do API jako data URL, do AgentRun se
+ * ale ukládají jen jejich popisky, base64 by záznamy nafoukl na megabajty.
+ */
+export function buildUserContent(
+  input: string,
+  images: AgentImage[],
+): string | UserContentPart[] {
+  if (images.length === 0) return input;
+
+  return [
+    { type: "input_text", text: input },
+    ...images.map(
+      (image): UserContentPart => ({
+        type: "input_image",
+        image_url: `data:${image.mimeType};base64,${image.data.toString("base64")}`,
+        detail: "auto",
+      }),
+    ),
+  ];
+}
+
 type ResponsesPayload = {
   output?: ResponsesOutputItem[];
   usage?: { input_tokens?: number; output_tokens?: number };
@@ -79,12 +108,15 @@ export async function callAgentModel<T>(options: {
   jsonSchema: Record<string, unknown>;
   zodSchema: z.ZodType<T>;
   useWebSearch?: boolean;
+  /** Obrázky k textovému vstupu — dělají z volání multimodální audit. */
+  images?: AgentImage[];
   promptVersionId?: string | null;
   runId?: string | null;
   campaignId?: string | null;
   leadId?: string | null;
 }): Promise<AgentCallResult<T>> {
   const model = resolveModel(options.task);
+  const images = options.images ?? [];
 
   const agentRun = await prisma.agentRun.create({
     data: {
@@ -95,8 +127,15 @@ export async function callAgentModel<T>(options: {
       campaignId: options.campaignId ?? null,
       leadId: options.leadId ?? null,
       // Vstup se ukládá celý — bez něj se nedá zpětně zjistit, proč agent
-      // rozhodl, jak rozhodl (data lineage, sekce 34).
-      input: { task: options.task, system: options.system, input: options.input },
+      // rozhodl, jak rozhodl (data lineage, sekce 34). Z obrázků jen popisky.
+      input: {
+        task: options.task,
+        system: options.system,
+        input: options.input,
+        ...(images.length > 0
+          ? { images: images.map((image) => image.label) }
+          : {}),
+      },
     },
     select: { id: true },
   });
@@ -127,7 +166,7 @@ export async function callAgentModel<T>(options: {
         model,
         input: [
           { role: "system", content: options.system },
-          { role: "user", content: options.input },
+          { role: "user", content: buildUserContent(options.input, images) },
         ],
         ...(options.useWebSearch ? { tools: [{ type: "web_search" }] } : {}),
         text: {

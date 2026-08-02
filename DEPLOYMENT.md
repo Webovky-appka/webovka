@@ -257,6 +257,19 @@ Endpoint je idempotentní: kampaň s během ze stejného dne nebo s právě bě�
 během se přeskočí, takže opakované zavolání nic nezdvojí. Bez `OPENAI_API_KEY`
 neudělá nic a řekne to.
 
+## 4g. Screenshoty webů (AI Sales audit)
+
+Auditor při běhu fotí web leadu (desktop 1440×900 a mobil 390×844) a snímky
+posílá modelu — audit tak hodnotí skutečně vyrenderovaný web, ne jen HTML.
+
+- **Na Vercelu funguje bez nastavení.** Prohlížeč nese balíček
+  `@sparticuz/chromium`, žádný účet ani proměnná nejsou potřeba.
+- **Lokálně** je potřeba jednou stáhnout Chrome pro puppeteer:
+  `npx puppeteer browsers install chrome`. Bez něj se screenshoty tiše
+  přeskočí a audit běží jen z HTML (v aktivitě leadu je `screenshots: false`).
+- Snímky se ukládají do úložiště příloh (lokálně `.uploads/`, v produkci
+  Vercel Blob) a vydávají jen přihlášeným přes `/api/sales/screenshots/…`.
+
 ## 5. Aplikace (Vercel)
 
 1. Naimportujte repozitář `jakubsovadina/web-appka`.

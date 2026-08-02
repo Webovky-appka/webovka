@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /**
+   * Balíčky pro screenshoty webů se nesmí bundlovat: @sparticuz/chromium
+   * nese binárku prohlížeče, puppeteer je jen lokální vývojová náhrada
+   * a nesmí se řešit při buildu na Vercelu, kde není nainstalovaný.
+   */
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer"],
   experimental: {
     serverActions: {
       /**

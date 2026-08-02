@@ -492,6 +492,11 @@ model SalesLead {
   /// Proč jsme firmu vybrali. Ukazuje se v review, píše ho Scout.
   reason         String?
   lostReason     String?
+  /// Screenshoty webu z auditu (sekce 9.2). Klíče do úložiště souborů;
+  /// vstup pro multimodální audit i budoucí Designer.
+  screenshotDesktopKey String?
+  screenshotMobileKey  String?
+  screenshotAt         DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
