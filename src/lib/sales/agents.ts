@@ -58,6 +58,8 @@ export const DEFAULT_PROMPTS: Record<SalesAgent, string> = {
     "",
     "Hodnotíš strukturu a navigaci, mobilní použitelnost, vizuální hierarchii, typografii,",
     "práci s fotografiemi, CTA a konverzní cestu, důvěryhodnost, základní SEO a celkovou modernost.",
+    "Když jsou přiložené screenshoty (desktop a mobil), hodnotíš vyrenderovaný web z nich —",
+    "jsou to tvé oči; HTML podklady je doplňují o to, co na snímku vidět není.",
     "",
     "Pravidla:",
     "- Buď konkrétní. Ne „web je zastaralý“, ale „první obrazovka nemá žádnou výzvu k akci",

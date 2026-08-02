@@ -6,13 +6,16 @@ import * as z from "zod";
 import { prisma } from "@/lib/prisma";
 import { EVIDENCE_KINDS } from "@/lib/sales/evidence";
 import { fetchAuditContent } from "@/lib/sales/fetch-site";
-import { callAgentModel } from "@/lib/sales/model";
+import { callAgentModel, type AgentImage } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
+import { captureAndStore } from "@/lib/sales/screenshot";
+import { VISUAL_DIMENSIONS } from "@/lib/sales/visual";
 
 /**
  * Auditor: hluboké hodnocení webu kvalifikovaného leadu (sekce 9 specifikace).
- * Pracuje z HTML — screenshoty a multimodální audit jsou V2, takže co z HTML
- * nejde poznat, musí být označené jako úsudek, ne vydávané za pozorování.
+ * Pracuje z HTML a ze screenshotů (desktop + mobil, sekce 9.2) — vidí tedy
+ * skutečně vyrenderovaný web. Když se screenshoty nepovedou, běží jen z HTML
+ * a vizuální dojmy musí být označené jako úsudek, ne vydávané za pozorování.
  */
 
 const ProblemSchema = z.object({
@@ -21,7 +24,26 @@ const ProblemSchema = z.object({
   severity: z.enum(["low", "medium", "high"]),
 });
 
+const dimensionScore = z.number().int().min(0).max(10);
+
+/** Rozpad vizuálu po dimenzích (sekce 9.1). Klíče drží VISUAL_DIMENSIONS. */
+const VisualSchema = z.object({
+  typography: dimensionScore,
+  layout: dimensionScore,
+  spacing: dimensionScore,
+  visualHierarchy: dimensionScore,
+  photography: dimensionScore,
+  colorSystem: dimensionScore,
+  brandConsistency: dimensionScore,
+  ctaPresentation: dimensionScore,
+  mobilePresentation: dimensionScore,
+  perceivedModernity: dimensionScore,
+});
+
+export const VISUAL_SCHEMA_KEYS = Object.keys(VisualSchema.shape);
+
 const AuditSchema = z.object({
+  visual: VisualSchema,
   visualScore: z.number().int().min(0).max(100),
   uxScore: z.number().int().min(0).max(100),
   mobileScore: z.number().int().min(0).max(100),
@@ -49,6 +71,7 @@ const AUDIT_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: [
+    "visual",
     "visualScore",
     "uxScore",
     "mobileScore",
@@ -64,6 +87,19 @@ const AUDIT_JSON_SCHEMA = {
     "confidence",
   ],
   properties: {
+    visual: {
+      type: "object",
+      additionalProperties: false,
+      required: VISUAL_DIMENSIONS.map((dimension) => dimension.key),
+      description:
+        "Rozpad vizuálu 0–10 po dimenzích (0 = katastrofa, 10 = špička). Ze screenshotů; bez nich odhad z HTML.",
+      properties: Object.fromEntries(
+        VISUAL_DIMENSIONS.map((dimension) => [
+          dimension.key,
+          { type: "integer", description: `${dimension.label} 0–10` },
+        ]),
+      ),
+    },
     visualScore: {
       type: "integer",
       description: "Vizuální kvalita webu 0–100 (vyšší = lepší web)",
@@ -154,14 +190,55 @@ export async function auditLead(options: {
     };
   }
 
+  // Screenshoty jsou nejlepší snaha — bez nich audit poběží jen z HTML.
+  // Fotí se finální URL po přesměrováních, stejná, ze které je HTML.
+  const shots = await captureAndStore(leadId, content.finalUrl);
+  if (shots) {
+    await prisma.salesLead.update({
+      where: { id: leadId },
+      data: {
+        screenshotDesktopKey: shots.desktopKey,
+        screenshotMobileKey: shots.mobileKey,
+        screenshotAt: new Date(),
+      },
+    });
+  }
+
+  const images: AgentImage[] = shots
+    ? [
+        {
+          label: "screenshot desktop 1440×900",
+          data: shots.capture.desktop,
+          mimeType: "image/jpeg",
+        },
+        {
+          label: "screenshot mobil 390×844",
+          data: shots.capture.mobile,
+          mimeType: "image/jpeg",
+        },
+      ]
+    : [];
+
   const prompt = await getActivePrompt("auditor");
+
+  const evidenceRules = shots
+    ? [
+        "Proveď audit podle svých pravidel. Pamatuj:",
+        "- Přiložené jsou screenshoty: první desktop (1440×900), druhý mobil (390×844).",
+        "- Co je na screenshotu vidět (rozložení, chybějící CTA, malé fotografie), je OBSERVED se zdrojem „screenshot desktop“ nebo „screenshot mobil“.",
+        "- Estetický dojem (zastaralost, elegance) zůstává AI_JUDGMENT, i když vychází ze screenshotu.",
+      ]
+    : [
+        "Proveď audit podle svých pravidel. Pamatuj:",
+        "- Vidíš jen HTML, screenshoty se nepodařily. Co je vizuální dojem, označ v evidence jako AI_JUDGMENT a sniž confidence.",
+      ];
 
   const input = [
     `Firma: ${lead.prospect.name} (${lead.prospect.industry ?? "obor neznámý"}, ${lead.prospect.location ?? "místo neznámé"})`,
     `Proč je v pipeline: ${lead.reason ?? "bez důvodu"}`,
     `Skóre z kvalifikace: ${lead.score ?? "—"} (firma ${lead.businessScore ?? "—"}, web ${lead.websiteScore ?? "—"})`,
     "",
-    `Podklady z webu ${content.finalUrl} (jen HTML, bez vykreslení):`,
+    `Podklady z webu ${content.finalUrl}${shots ? "" : " (jen HTML, bez vykreslení)"}:`,
     `Titulek: ${content.title ?? "chybí"}`,
     `Meta description: ${content.description ?? "chybí"}`,
     `Viewport meta: ${content.hasViewportMeta ? "ano" : "chybí — silný signál špatného mobilu"}`,
@@ -174,10 +251,10 @@ export async function auditLead(options: {
     "Text webu:",
     content.excerpt,
     "",
-    "Proveď audit podle svých pravidel. Pamatuj:",
-    "- Vidíš jen HTML. Co je vizuální dojem, označ v evidence jako AI_JUDGMENT.",
+    ...evidenceRules,
     "- Co je přímo v podkladech (chybějící viewport, počty, texty), je OBSERVED.",
     "- Co z pozorovaného vyplývá, je DERIVED. Co nevíš, je UNKNOWN — neskóruj to vysoko.",
+    "- Rozpad visual: každou dimenzi ohodnoť 0–10 podle toho, co skutečně vidíš.",
     `- finalScore je obchodní příležitost pro redesign v kontextu mise: ${campaign.mission}`,
   ].join("\n");
 
@@ -189,6 +266,7 @@ export async function auditLead(options: {
     schemaName: "website_audit",
     jsonSchema: AUDIT_JSON_SCHEMA,
     zodSchema: AuditSchema,
+    images,
     promptVersionId: prompt.versionId,
     runId,
     campaignId: campaign.id,
@@ -213,6 +291,7 @@ export async function auditLead(options: {
         opportunities: audit.opportunities,
         recommendation: audit.recommendation,
         evidence: audit.evidence,
+        visual: audit.visual,
       },
       summary: audit.summary,
       confidence: audit.confidence,
@@ -240,7 +319,7 @@ export async function auditLead(options: {
       actor: "auditor",
       kind: "audited",
       body: `Audit dokončen — výsledné skóre ${audit.finalScore}. ${audit.summary}`,
-      meta: { runId, confidence: audit.confidence },
+      meta: { runId, confidence: audit.confidence, screenshots: Boolean(shots) },
     },
   });
 

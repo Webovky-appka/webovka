@@ -63,6 +63,33 @@ export async function saveFile(
   return { storageKey };
 }
 
+/**
+ * Uložení hotových bytů pod deterministický klíč — pro soubory, které vyrábí
+ * aplikace sama (screenshoty webů). Opakované uložení stejný klíč přepíše,
+ * takže volající nemusí řešit úklid starých verzí.
+ */
+export async function saveRawFile(
+  storageKey: string,
+  bytes: Buffer,
+  contentType: string,
+): Promise<void> {
+  if (driver() === "blob") {
+    const { put } = await import("@vercel/blob");
+    await put(storageKey, bytes, {
+      access: "public",
+      contentType,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      ...blobOptions(),
+    });
+    return;
+  }
+
+  const target = path.join(LOCAL_ROOT, storageKey);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, bytes);
+}
+
 export async function readFile(storageKey: string): Promise<Buffer> {
   if (driver() === "blob") {
     const { head } = await import("@vercel/blob");

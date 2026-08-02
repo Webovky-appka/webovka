@@ -12,6 +12,7 @@ import {
   isEvidenceKind,
   type EvidenceItem,
 } from "@/lib/sales/evidence";
+import { isVisualBreakdown, VISUAL_DIMENSIONS } from "@/lib/sales/visual";
 
 export const metadata = {
   title: "Lead — Mitsov Web",
@@ -51,6 +52,7 @@ type Findings = {
   opportunities?: string[];
   recommendation?: string;
   evidence?: EvidenceItem[];
+  visual?: unknown;
 };
 
 export default async function LeadPage(props: {
@@ -84,6 +86,7 @@ export default async function LeadPage(props: {
   const evidence = (findings.evidence ?? []).filter((item) =>
     isEvidenceKind(item.kind),
   );
+  const visual = isVisualBreakdown(findings.visual) ? findings.visual : null;
 
   return (
     <div className="space-y-5">
@@ -242,6 +245,61 @@ export default async function LeadPage(props: {
         </section>
       ) : null}
 
+      {lead.screenshotDesktopKey || lead.screenshotMobileKey ? (
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">
+              Současný web
+            </h2>
+            {lead.screenshotAt ? (
+              <p className="text-xs text-slate-500">
+                {formatDateTime(lead.screenshotAt)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-start gap-4">
+            {lead.screenshotDesktopKey ? (
+              <a
+                href={`/api/sales/screenshots/${lead.id}/desktop`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block min-w-0 flex-1 basis-72"
+              >
+                {/* Obrázky jdou přes autorizovanou API routu, next/image
+                    optimalizátor by je stahoval bez session cookie. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/sales/screenshots/${lead.id}/desktop`}
+                  alt={`Screenshot webu ${lead.prospect.name} na desktopu`}
+                  className="w-full rounded-lg border border-slate-200"
+                />
+                <p className="mt-1 text-center text-xs text-slate-400">
+                  Desktop 1440×900
+                </p>
+              </a>
+            ) : null}
+            {lead.screenshotMobileKey ? (
+              <a
+                href={`/api/sales/screenshots/${lead.id}/mobile`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-36 shrink-0 sm:w-44"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/sales/screenshots/${lead.id}/mobile`}
+                  alt={`Screenshot webu ${lead.prospect.name} na mobilu`}
+                  className="w-full rounded-lg border border-slate-200"
+                />
+                <p className="mt-1 text-center text-xs text-slate-400">
+                  Mobil 390×844
+                </p>
+              </a>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       {audit ? (
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -277,6 +335,38 @@ export default async function LeadPage(props: {
               </div>
             ))}
           </dl>
+
+          {visual ? (
+            <div className="space-y-2">
+              <h3 className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Vizuál po dimenzích
+              </h3>
+              <ul className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-3">
+                {VISUAL_DIMENSIONS.map((dimension) => {
+                  const score = visual[dimension.key];
+                  return (
+                    <li
+                      key={dimension.key}
+                      className="flex items-baseline justify-between gap-2"
+                    >
+                      <span className="text-slate-600">{dimension.label}</span>
+                      <span
+                        className={`font-medium ${
+                          score <= 3
+                            ? "text-red-700"
+                            : score <= 6
+                              ? "text-amber-700"
+                              : "text-emerald-700"
+                        }`}
+                      >
+                        {score}/10
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
 
           {findings.problems && findings.problems.length > 0 ? (
             <div className="space-y-2">
