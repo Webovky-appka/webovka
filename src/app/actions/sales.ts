@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { sendGmail } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
+import { LOST_REASONS } from "@/lib/sales/funnel";
 
 export type SalesFormState = { error?: string; success?: string } | undefined;
 
@@ -39,6 +40,7 @@ const CampaignSchema = z.object({
     .int()
     .min(0)
     .max(100, "Skóre je v rozsahu 0 až 100."),
+  schedule: z.enum(["NONE", "WEEKDAYS", "DAILY"]),
 });
 
 function num(formData: FormData, key: string, fallback: number): number {
@@ -56,6 +58,11 @@ function readCampaign(formData: FormData) {
     geography: formData.get("geography"),
     dailyLimit: num(formData, "dailyLimit", 8),
     minScore: num(formData, "minScore", 60),
+    schedule: ["NONE", "WEEKDAYS", "DAILY"].includes(
+      String(formData.get("schedule")),
+    )
+      ? String(formData.get("schedule"))
+      : "NONE",
   };
 }
 
@@ -482,4 +489,93 @@ export async function rejectLead(
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath(`/sales/${lead.campaignId}`);
   return { success: "Lead zamítnut. Firma je půl roku v cooldownu." };
+}
+
+/** Stavy, které smí uživatel nastavit ručně po oslovení (sekce 29 specky). */
+const MANUAL_OUTCOMES = new Set([
+  "REPLIED",
+  "MEETING",
+  "PROPOSAL",
+  "WON",
+  "LOST",
+]);
+
+/** Ze kterých stavů se outcome smí měnit. */
+const OUTCOME_SOURCE = new Set([
+  "CONTACTED",
+  "REPLIED",
+  "MEETING",
+  "PROPOSAL",
+]);
+
+const OUTCOME_LABELS: Record<string, string> = {
+  REPLIED: "Odpověděl",
+  MEETING: "Domluvená schůzka",
+  PROPOSAL: "Poslaná nabídka",
+  WON: "Vyhráno",
+  LOST: "Prohráno",
+};
+
+/**
+ * Ruční posun leadu po oslovení: odpověď, schůzka, nabídka, výhra, prohra.
+ * Každý lead má skončit výsledkem — z outcomes bude jednou žít Coach.
+ */
+export async function setLeadOutcome(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const outcome = String(formData.get("outcome") ?? "");
+  const lostReason = String(formData.get("lostReason") ?? "").trim();
+
+  if (!MANUAL_OUTCOMES.has(outcome)) return { error: "Neznámý výsledek." };
+
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, status: true },
+  });
+  if (!lead) return { error: "Lead nenalezen." };
+  if (!OUTCOME_SOURCE.has(lead.status)) {
+    return { error: "Výsledek jde nastavit až po oslovení leadu." };
+  }
+
+  if (outcome === "LOST" && lostReason === "") {
+    return { error: "U prohry vyberte důvod — bez něj se z ní nejde poučit." };
+  }
+  if (
+    outcome === "LOST" &&
+    !(LOST_REASONS as readonly string[]).includes(lostReason)
+  ) {
+    return { error: "Neznámý důvod prohry." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: {
+      status: outcome as never,
+      lostReason: outcome === "LOST" ? lostReason : null,
+    },
+  });
+
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "outcome",
+      body: `${user.name}: ${OUTCOME_LABELS[outcome]}${outcome === "LOST" ? ` — ${lostReason}` : "."}`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+
+  return {
+    success:
+      outcome === "WON"
+        ? "Vyhráno. Založte klienta a zakázku, ať se pokračuje v dodací části."
+        : `Stav změněn: ${OUTCOME_LABELS[outcome]}.`,
+  };
 }

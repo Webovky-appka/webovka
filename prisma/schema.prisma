@@ -412,6 +412,13 @@ enum SalesLeadStatus {
   REJECTED
 }
 
+/// Kdy se kampaň spouští sama. NONE = jen ručně tlačítkem.
+enum SalesSchedule {
+  NONE
+  WEEKDAYS
+  DAILY
+}
+
 enum SalesRunStatus {
   QUEUED
   RUNNING
@@ -445,6 +452,7 @@ model SalesCampaign {
   /// Pod tímhle skóre se lead rovnou zamítá.
   minScore   Int                 @default(60)
   status     SalesCampaignStatus @default(ACTIVE)
+  schedule   SalesSchedule       @default(NONE)
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
 

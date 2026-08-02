@@ -242,6 +242,21 @@ kvótu. Bez `Actions: Read-only` přehled funguje dál, jen se nezobrazí stav C
 Fine-grained tokeny mají platnost — po vypršení záložka nahlásí neplatný token
 a token se vydá znovu.
 
+## 4f. Ranní běhy AI Sales (Vercel Cron)
+
+Kampaň s automatickým spouštěním (v nastavení kampaně: každý den / pracovní
+dny) startuje sama. `vercel.json` obsahuje cron na `/api/sales/cron` v 06:00
+UTC — v létě 8:00, v zimě 7:00 českého času, Vercel časové zóny neumí.
+
+1. Nastavte proměnnou `CRON_SECRET` (libovolný dlouhý náhodný řetězec,
+   `openssl rand -base64 32`). Vercel ji pak posílá v hlavičce a endpoint
+   bez ní plánované spuštění odmítne.
+2. Hobby plán umí cron jednou denně — přesně tolik je potřeba.
+
+Endpoint je idempotentní: kampaň s během ze stejného dne nebo s právě běžícím
+během se přeskočí, takže opakované zavolání nic nezdvojí. Bez `OPENAI_API_KEY`
+neudělá nic a řekne to.
+
 ## 5. Aplikace (Vercel)
 
 1. Naimportujte repozitář `jakubsovadina/web-appka`.

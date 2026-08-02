@@ -100,6 +100,7 @@ export default async function CampaignPage(props: {
               geography: campaign.geography,
               dailyLimit: campaign.dailyLimit,
               minScore: campaign.minScore,
+              schedule: campaign.schedule,
             }}
           />
         </section>
