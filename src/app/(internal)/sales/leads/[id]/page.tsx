@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { OutcomePanel } from "@/components/sales/outcome-panel";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -202,6 +203,24 @@ export default async function LeadPage(props: {
           defaultTo={primaryContact?.email ?? ""}
           gmailAddress={gmailAccount?.email ?? null}
         />
+      ) : null}
+
+      {["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"].includes(lead.status) ? (
+        <OutcomePanel leadId={lead.id} status={lead.status} />
+      ) : null}
+
+      {lead.status === "WON" ? (
+        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-5">
+          <p className="text-sm font-medium text-emerald-900">
+            Vyhráno. Založte klienta a zakázku — akvizice končí, dodávka začíná.
+          </p>
+          <Link
+            href="/clients/new"
+            className="mt-3 inline-block rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+          >
+            Založit klienta {lead.prospect.name}
+          </Link>
+        </section>
       ) : null}
 
       {draft && draft.status !== "DRAFT" ? (
