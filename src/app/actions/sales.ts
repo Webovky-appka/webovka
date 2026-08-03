@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { sendGmail } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
+import { auditLead } from "@/lib/sales/auditor";
 import { LOST_REASONS } from "@/lib/sales/funnel";
 
 export type SalesFormState = { error?: string; success?: string } | undefined;
@@ -33,8 +34,8 @@ const CampaignSchema = z.object({
   dailyLimit: z
     .number()
     .int()
-    .min(1, "Aspoň jeden lead denně.")
-    .max(50, "Víc než 50 leadů denně je spam, ne akvizice."),
+    .min(1, "Aspoň jedna příležitost denně.")
+    .max(50, "Víc než 50 příležitostí denně je spam, ne akvizice."),
   minScore: z
     .number()
     .int()
@@ -446,7 +447,7 @@ export async function markEmailSentManually(
 
   revalidatePath(`/sales/leads/${draft.leadId}`);
   revalidatePath(`/sales/${draft.lead.campaignId}`);
-  return { success: "Označeno jako odeslané. Lead je ve stavu Osloven." };
+  return { success: "Označeno jako odeslané. Příležitost je ve stavu Oslovená." };
 }
 
 /** Zamítnutí leadu při review. Důvod se ukládá — Coach z něj bude jednou žít. */
@@ -463,9 +464,9 @@ export async function rejectLead(
     where: { id: leadId },
     select: { id: true, prospectId: true, campaignId: true, status: true },
   });
-  if (!lead) return { error: "Lead nenalezen." };
+  if (!lead) return { error: "Příležitost nenalezena." };
   if (lead.status === "CONTACTED") {
-    return { error: "Oslovený lead už zamítnout nejde." };
+    return { error: "Oslovenou příležitost už nejde zamítnout." };
   }
 
   await prisma.salesLead.update({
@@ -488,7 +489,80 @@ export async function rejectLead(
 
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath(`/sales/${lead.campaignId}`);
-  return { success: "Lead zamítnut. Firma je půl roku v cooldownu." };
+  return { success: "Příležitost zamítnuta. Firma je půl roku v cooldownu." };
+}
+
+/** Stavy, ve kterých dává smysl web přeauditovat — před oslovením. */
+const REAUDIT_STATUSES = new Set([
+  "QUALIFIED",
+  "RESEARCHING",
+  "READY_FOR_REVIEW",
+  "APPROVED",
+]);
+
+/**
+ * Ruční přeaudit z detailu příležitosti. Pořídí čerstvé screenshoty, spustí
+ * multimodální audit a přepíše skóre. Když nové skóre spadne pod práh
+ * kampaně, příležitost se rovnou zamítne a rozepsané návrhy zahodí —
+ * stejné pravidlo jako při kvalifikaci.
+ */
+export async function reauditLead(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+  if (!isAiConfigured()) {
+    return { error: "Chybí OPENAI_API_KEY, audit nejde spustit." };
+  }
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    include: { campaign: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (!REAUDIT_STATUSES.has(lead.status)) {
+    return { error: "V tomto stavu už web přeauditovat nejde." };
+  }
+
+  const outcome = await auditLead({
+    leadId,
+    campaign: lead.campaign,
+    runId: null,
+  });
+  if (!outcome.ok) return { error: outcome.error };
+
+  if (outcome.finalScore < lead.campaign.minScore) {
+    await prisma.salesLead.update({
+      where: { id: leadId },
+      data: {
+        status: "REJECTED",
+        lostReason: `skóre ${outcome.finalScore} pod prahem ${lead.campaign.minScore} po přeauditu`,
+      },
+    });
+    await prisma.salesEmailDraft.updateMany({
+      where: { leadId, status: "DRAFT" },
+      data: { status: "REJECTED" },
+    });
+    await prisma.salesActivity.create({
+      data: {
+        prospectId: lead.prospectId,
+        leadId,
+        actor: "user",
+        kind: "rejected",
+        body: `${user.name} nechal web přeauditovat — skóre ${outcome.finalScore} je pod prahem, příležitost zamítnuta.`,
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    revalidatePath(`/sales/${lead.campaignId}`);
+    return {
+      success: `Nové skóre ${outcome.finalScore} je pod prahem kampaně — příležitost zamítnuta.`,
+    };
+  }
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  return { success: `Audit hotový, nové skóre ${outcome.finalScore}.` };
 }
 
 /** Stavy, které smí uživatel nastavit ručně po oslovení (sekce 29 specky). */
@@ -536,9 +610,9 @@ export async function setLeadOutcome(
     where: { id: leadId },
     select: { id: true, prospectId: true, campaignId: true, status: true },
   });
-  if (!lead) return { error: "Lead nenalezen." };
+  if (!lead) return { error: "Příležitost nenalezena." };
   if (!OUTCOME_SOURCE.has(lead.status)) {
-    return { error: "Výsledek jde nastavit až po oslovení leadu." };
+    return { error: "Výsledek jde nastavit až po oslovení." };
   }
 
   if (outcome === "LOST" && lostReason === "") {

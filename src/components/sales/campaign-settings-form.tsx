@@ -80,16 +80,16 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignSettings 
           placeholder="Brno a okolí"
         />
         <NumberField
-          label="Denní limit leadů"
+          label="Denní limit příležitostí"
           name="dailyLimit"
           defaultValue={campaign.dailyLimit}
-          hint="Nejvýš tolik kvalifikovaných leadů z jednoho běhu."
+          hint="Nejvýš tolik kvalifikovaných příležitostí z jednoho běhu."
         />
         <NumberField
           label="Minimální skóre"
           name="minScore"
           defaultValue={campaign.minScore}
-          hint="Lead pod tímhle skóre se rovnou zamítne."
+          hint="Příležitost pod tímto skóre se rovnou zamítne."
         />
         <div className="space-y-1.5">
           <label
@@ -109,7 +109,7 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignSettings 
             <option value="DAILY">Každý den ráno</option>
           </select>
           <p className="text-xs text-slate-500">
-            Běh startuje kolem 8:00. Ráno pak čekají leady ke schválení.
+            Běh startuje kolem 8:00. Ráno pak čekají příležitosti ke schválení.
           </p>
         </div>
       </div>

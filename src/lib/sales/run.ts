@@ -266,7 +266,7 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
 
     if (!outcome.ok) {
       stats.errors.push(`Lead ${leadId}: ${outcome.error}`);
-      log(stats, `Kvalifikace leadu selhala: ${outcome.error}`);
+      log(stats, `Kvalifikace příležitosti selhala: ${outcome.error}`);
       continue;
     }
 
@@ -300,7 +300,7 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
 
     if (!outcome.ok) {
       stats.errors.push(`Audit ${leadId}: ${outcome.error}`);
-      log(stats, `Audit leadu selhal: ${outcome.error}`);
+      log(stats, `Audit příležitosti selhal: ${outcome.error}`);
       continue;
     }
 

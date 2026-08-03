@@ -157,7 +157,7 @@ export function ReviewPanel({
           disabled={rejecting}
           className="rounded-lg border border-red-200 px-3.5 py-2 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-60"
         >
-          {rejecting ? "Zamítám…" : "Zamítnout lead"}
+          {rejecting ? "Zamítám…" : "Zamítnout příležitost"}
         </button>
         <FormError message={rejected?.error} />
       </form>

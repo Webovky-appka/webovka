@@ -6,7 +6,7 @@ import { CampaignStatusField } from "@/components/sales/campaign-status-field";
 import { PromptEditor } from "@/components/sales/prompt-editor";
 import { StartRunForm } from "@/components/sales/start-run-form";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, pluralCs } from "@/lib/format";
 import { AGENT_INFO, SALES_AGENTS } from "@/lib/sales/agents";
 import { getActivePrompt } from "@/lib/sales/prompts";
 import { prisma } from "@/lib/prisma";
@@ -23,12 +23,19 @@ const RUN_LABELS: Record<string, string> = {
 };
 
 const LEAD_LABELS: Record<string, string> = {
-  DISCOVERED: "Objevený",
+  DISCOVERED: "Objevená",
   QUALIFYING: "Kvalifikuje se",
-  QUALIFIED: "Kvalifikovaný",
+  QUALIFIED: "Kvalifikovaná",
+  RESEARCHING: "Doplňuje se research",
   READY_FOR_REVIEW: "Ke schválení",
-  CONTACTED: "Osloven",
-  REJECTED: "Zamítnutý",
+  APPROVED: "Schválená",
+  CONTACTED: "Oslovená",
+  REPLIED: "Odpověděli",
+  MEETING: "Schůzka",
+  PROPOSAL: "Nabídka",
+  WON: "Vyhraná",
+  LOST: "Prohraná",
+  REJECTED: "Zamítnutá",
 };
 
 export default async function CampaignPage(props: {
@@ -79,7 +86,14 @@ export default async function CampaignPage(props: {
               {campaign.name}
             </h1>
             <p className="text-sm text-slate-500">
-              {campaign._count.leads} leadů celkem
+              {campaign._count.leads}{" "}
+              {pluralCs(
+                campaign._count.leads,
+                "příležitost",
+                "příležitosti",
+                "příležitostí",
+              )}{" "}
+              celkem · práh skóre {campaign.minScore}
             </p>
           </div>
           <CampaignStatusField campaignId={campaign.id} status={campaign.status} />
@@ -149,7 +163,7 @@ export default async function CampaignPage(props: {
 
       {campaign.leads.length > 0 ? (
         <section className="space-y-3">
-          <h2 className="font-medium text-slate-900">Leady</h2>
+          <h2 className="font-medium text-slate-900">Příležitosti</h2>
           <ul className="space-y-2">
             {campaign.leads.map((lead) => (
               <li
@@ -157,26 +171,44 @@ export default async function CampaignPage(props: {
                 className="rounded-xl border border-slate-200 bg-white p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <Link
-                      href={`/sales/leads/${lead.id}`}
-                      className="font-medium text-slate-900 hover:underline"
-                    >
-                      {lead.prospect.name}
-                    </Link>
-                    {lead.prospect.domain ? (
-                      <a
-                        href={`https://${lead.prospect.domain}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-sky-700 underline hover:text-sky-900"
-                      >
-                        {lead.prospect.domain}
-                      </a>
+                  <div className="flex min-w-0 items-start gap-3">
+                    {lead.screenshotDesktopKey ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/sales/screenshots/${lead.id}/desktop`}
+                        alt=""
+                        className="h-12 w-20 shrink-0 rounded border border-slate-200 object-cover object-top"
+                      />
                     ) : null}
+                    <div className="min-w-0">
+                      <Link
+                        href={`/sales/leads/${lead.id}`}
+                        className="font-medium text-slate-900 hover:underline"
+                      >
+                        {lead.prospect.name}
+                      </Link>{" "}
+                      {lead.prospect.domain ? (
+                        <a
+                          href={`https://${lead.prospect.domain}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-sky-700 underline hover:text-sky-900"
+                        >
+                          {lead.prospect.domain}
+                        </a>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-lg font-semibold text-slate-900">
+                    <p
+                      className={`text-lg font-semibold ${
+                        lead.score === null
+                          ? "text-slate-900"
+                          : lead.score >= campaign.minScore
+                            ? "text-emerald-700"
+                            : "text-red-600"
+                      }`}
+                    >
                       {lead.score ?? "—"}
                     </p>
                     <p className="text-xs text-slate-500">

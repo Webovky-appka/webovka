@@ -105,7 +105,7 @@ export function RunTicker({ runId }: { runId: string }) {
             ? "Načítám stav běhu…"
             : !stats?.inspected
               ? "Scout hledá kandidáty…"
-              : "Kvalifikuji leady…"}
+              : "Kvalifikuji příležitosti…"}
         </p>
       </div>
 
