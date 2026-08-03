@@ -1,13 +1,23 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { ProjectStatus, type Prisma } from "@prisma/client";
 
+import { DailyDashboard } from "@/components/daily-dashboard";
+import {
+  DASHBOARD_DISMISS_COOKIE,
+  type DashboardSection,
+} from "@/lib/daily-dashboard";
 import { PhaseBadge } from "@/components/phase-badge";
 import { ProgressBar } from "@/components/progress-bar";
 import { ProjectFilter } from "@/components/project-filter";
 import { requireUser } from "@/lib/auth";
 import {
+  businessDayKey,
+  formatDayHeading,
   formatRelativeDays,
   isContactStale,
+  isDueTodayOrOverdue,
+  isOverdue,
   pluralCs,
   unfinishedTasksPhrase,
 } from "@/lib/format";
@@ -52,6 +62,12 @@ export default async function ProjectsPage(props: {
         }
       : {}),
   };
+
+  // Denní přehled se počítá jen když není na dnešek zavřený křížkem.
+  const dismissedDay = (await cookies()).get(DASHBOARD_DISMISS_COOKIE)?.value;
+  const dayKey = businessDayKey();
+  const dashboardSections =
+    dismissedDay === dayKey ? null : await buildDashboardSections();
 
   // Rozjednané akvizice z AI Sales — oslovené firmy před výhrou. Zakázka
   // z nich vznikne až po vyhrané příležitosti, ale obchodní rozpracovanost
@@ -120,6 +136,14 @@ export default async function ProjectsPage(props: {
           </Link>
         </div>
       </div>
+
+      {dashboardSections ? (
+        <DailyDashboard
+          dayKey={dayKey}
+          heading={formatDayHeading()}
+          sections={dashboardSections}
+        />
+      ) : null}
 
       <ProjectFilter q={q ?? ""} status={status ?? "active"} />
 
@@ -234,6 +258,130 @@ const ACQUISITION_LABELS: Record<string, string> = {
   MEETING: "Schůzka",
   PROPOSAL: "Nabídka",
 };
+
+/**
+ * Sekce denního přehledu: co dnes potřebuje ruce. Prázdné sekce komponenta
+ * neukazuje, takže klidný den znamená prázdný panel, ne nulové řádky.
+ */
+async function buildDashboardSections(): Promise<DashboardSection[]> {
+  const soon = new Date(Date.now() + 2 * 86_400_000);
+
+  const [reviewLeads, repliedLeads, dueTasks, activeProjects] =
+    await Promise.all([
+      prisma.salesLead.findMany({
+        where: { status: "READY_FOR_REVIEW" },
+        orderBy: { score: "desc" },
+        include: { prospect: { select: { name: true } } },
+      }),
+      prisma.salesLead.findMany({
+        where: { status: "REPLIED" },
+        orderBy: { updatedAt: "desc" },
+        include: { prospect: { select: { name: true } } },
+      }),
+      // Hrubý předvýběr přes SQL (se zónovou rezervou), přesný český
+      // kalendář rozhodne isDueTodayOrOverdue.
+      prisma.task.findMany({
+        where: { done: false, dueDate: { not: null, lte: soon } },
+        orderBy: { dueDate: "asc" },
+        include: {
+          project: {
+            select: {
+              id: true,
+              clientId: true,
+              client: { select: { companyName: true } },
+            },
+          },
+        },
+      }),
+      prisma.project.findMany({
+        where: { status: ProjectStatus.ACTIVE },
+        select: {
+          id: true,
+          name: true,
+          client: {
+            select: {
+              id: true,
+              companyName: true,
+              messages: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { createdAt: true },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+  const todayTasks = dueTasks.filter((task) =>
+    isDueTodayOrOverdue(task.dueDate),
+  );
+
+  const staleProjects = activeProjects
+    .map((project) => ({
+      project,
+      lastContact: project.client.messages[0]?.createdAt ?? null,
+    }))
+    .filter(({ lastContact }) => isContactStale(lastContact))
+    .sort(
+      (a, b) => (a.lastContact?.getTime() ?? 0) - (b.lastContact?.getTime() ?? 0),
+    );
+
+  return [
+    {
+      key: "review",
+      title: "Příležitosti ke schválení",
+      count: reviewLeads.length,
+      href: "/sales",
+      tone: "emerald",
+      items: reviewLeads.slice(0, 3).map((lead) => ({
+        label: lead.prospect.name,
+        href: `/sales/leads/${lead.id}`,
+        meta: lead.score !== null ? `skóre ${lead.score}` : undefined,
+        metaTone: "good" as const,
+      })),
+    },
+    {
+      key: "replied",
+      title: "Odpověděli — zareagujte",
+      count: repliedLeads.length,
+      href: "/sales",
+      tone: "sky",
+      items: repliedLeads.slice(0, 3).map((lead) => ({
+        label: lead.prospect.name,
+        href: `/sales/leads/${lead.id}`,
+        meta: formatRelativeDays(lead.updatedAt),
+      })),
+    },
+    {
+      key: "tasks",
+      title: "Úkoly na dnes a po termínu",
+      count: todayTasks.length,
+      href: "/projects",
+      tone: "amber",
+      items: todayTasks.slice(0, 4).map((task) => ({
+        label: `${task.title} · ${task.project.client.companyName}`,
+        href: `/clients/${task.project.clientId}?project=${task.project.id}`,
+        meta: isOverdue(task.dueDate) ? "po termínu" : "dnes",
+        metaTone: isOverdue(task.dueDate)
+          ? ("alert" as const)
+          : ("default" as const),
+      })),
+    },
+    {
+      key: "stale",
+      title: "Dlouho bez kontaktu",
+      count: staleProjects.length,
+      href: "/projects",
+      tone: "slate",
+      items: staleProjects.slice(0, 3).map(({ project, lastContact }) => ({
+        label: project.client.companyName,
+        href: `/clients/${project.client.id}?project=${project.id}`,
+        meta: formatRelativeDays(lastContact),
+      })),
+    },
+  ];
+}
 
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   return (

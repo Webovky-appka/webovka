@@ -128,6 +128,32 @@ export function isOverdue(dueDate: Date | null | undefined): boolean {
   return utcDayNumber(dueDate) < businessTodayNumber(new Date());
 }
 
+/** Termín je dnes nebo dřív — patří na dnešní seznam práce. */
+export function isDueTodayOrOverdue(dueDate: Date | null | undefined): boolean {
+  if (!dueDate) return false;
+  return utcDayNumber(dueDate) <= businessTodayNumber(new Date());
+}
+
+/**
+ * Dnešek podle českého kalendáře jako YYYY-MM-DD. Klíč pro stavy platné
+ * jeden den — třeba zavřený denní přehled, který se ráno zase ukáže.
+ */
+export function businessDayKey(now: Date = new Date()): string {
+  return businessDayFormatter.format(now);
+}
+
+const dayHeadingFormatter = new Intl.DateTimeFormat("cs-CZ", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: BUSINESS_TIME_ZONE,
+});
+
+/** Nadpis dne pro denní přehled: „neděle 3. srpna". */
+export function formatDayHeading(now: Date = new Date()): string {
+  return dayHeadingFormatter.format(now);
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`;
