@@ -13,16 +13,26 @@ export const metadata = {
 export default async function SalesPage() {
   await requireUser();
 
-  const campaigns = await prisma.salesCampaign.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { leads: true, runs: true } },
-      leads: {
-        where: { status: "READY_FOR_REVIEW" },
-        select: { id: true },
+  const [campaigns, reviewQueue] = await Promise.all([
+    prisma.salesCampaign.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: { select: { leads: true, runs: true } },
+        leads: {
+          where: { status: "READY_FOR_REVIEW" },
+          select: { id: true },
+        },
       },
-    },
-  });
+    }),
+    prisma.salesLead.findMany({
+      where: { status: "READY_FOR_REVIEW" },
+      orderBy: { score: "desc" },
+      include: {
+        prospect: { select: { name: true, domain: true } },
+        campaign: { select: { name: true, minScore: true } },
+      },
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -33,7 +43,7 @@ export default async function SalesPage() {
           </h1>
           <p className="text-sm text-slate-500">
             Tým agentů na hledání nových klientů. Kampaň říká, co se hledá;
-            agenti připraví leady a vy je schválíte.
+            agenti připraví příležitosti a vy je schválíte.
           </p>
         </div>
         <Link
@@ -44,16 +54,61 @@ export default async function SalesPage() {
         </Link>
       </div>
 
-      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">Nová kampaň</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Segment, oblast a mise. Scout začne pracovat, až kampaň spustíte —
-            spouštění běhů přijde v další etapě.
-          </p>
-        </div>
-        <NewCampaignForm />
-      </section>
+      {reviewQueue.length > 0 ? (
+        <section className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-emerald-900">
+              Ke schválení ({reviewQueue.length})
+            </h2>
+            <p className="text-xs text-emerald-800/70">
+              Připravené návrhy e-mailů čekají na vaši kontrolu. Nic se
+              neodešle bez vašeho souhlasu.
+            </p>
+          </div>
+          <ul className="space-y-1.5">
+            {reviewQueue.map((lead) => (
+              <li key={lead.id}>
+                <Link
+                  href={`/sales/leads/${lead.id}`}
+                  className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-emerald-100 transition hover:bg-emerald-50"
+                >
+                  {lead.screenshotDesktopKey ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={`/api/sales/screenshots/${lead.id}/desktop`}
+                      alt=""
+                      className="h-10 w-16 shrink-0 rounded border border-slate-200 object-cover object-top"
+                    />
+                  ) : (
+                    <span className="h-10 w-16 shrink-0 rounded border border-dashed border-slate-200 bg-slate-50" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">
+                      {lead.prospect.name}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {lead.campaign.name}
+                      {lead.prospect.domain ? ` · ${lead.prospect.domain}` : ""}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    <span
+                      className={`block text-sm font-semibold ${
+                        (lead.score ?? 0) >= lead.campaign.minScore
+                          ? "text-emerald-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {lead.score ?? "—"}
+                    </span>
+                    <span className="block text-xs text-slate-400">skóre</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {campaigns.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-sm text-slate-500">
@@ -61,48 +116,72 @@ export default async function SalesPage() {
           zastaralým webem.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {campaigns.map((campaign) => (
-            <li
-              key={campaign.id}
-              className="rounded-xl border border-slate-200 bg-white p-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Link
-                    href={`/sales/${campaign.id}`}
-                    className="font-medium text-slate-900 hover:underline"
-                  >
-                    {campaign.name}
-                  </Link>
-                  <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">
-                    {campaign.mission}
-                  </p>
+        <section className="space-y-3">
+          <h2 className="font-medium text-slate-900">Kampaně</h2>
+          <ul className="space-y-2">
+            {campaigns.map((campaign) => (
+              <li
+                key={campaign.id}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/sales/${campaign.id}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {campaign.name}
+                    </Link>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">
+                      {campaign.mission}
+                    </p>
+                  </div>
+                  <CampaignStatusField
+                    campaignId={campaign.id}
+                    status={campaign.status}
+                  />
                 </div>
-                <CampaignStatusField
-                  campaignId={campaign.id}
-                  status={campaign.status}
-                />
-              </div>
 
-              {campaign.leads.length > 0 ? (
-                <p className="mt-2 text-sm font-medium text-emerald-700">
-                  {campaign.leads.length}{" "}
-                  {pluralCs(campaign.leads.length, "lead čeká", "leady čekají", "leadů čeká")}{" "}
-                  na schválení
+                {campaign.leads.length > 0 ? (
+                  <p className="mt-2 text-sm font-medium text-emerald-700">
+                    {campaign.leads.length}{" "}
+                    {pluralCs(
+                      campaign.leads.length,
+                      "příležitost čeká",
+                      "příležitosti čekají",
+                      "příležitostí čeká",
+                    )}{" "}
+                    na schválení
+                  </p>
+                ) : null}
+                <p className="mt-3 text-xs text-slate-500">
+                  {campaign._count.leads}{" "}
+                  {pluralCs(
+                    campaign._count.leads,
+                    "příležitost",
+                    "příležitosti",
+                    "příležitostí",
+                  )}{" "}
+                  · {campaign._count.runs}{" "}
+                  {pluralCs(campaign._count.runs, "běh", "běhy", "běhů")} ·
+                  limit {campaign.dailyLimit}/den · minimální skóre{" "}
+                  {campaign.minScore}
                 </p>
-              ) : null}
-              <p className="mt-3 text-xs text-slate-500">
-                {campaign._count.leads}{" "}
-                {pluralCs(campaign._count.leads, "lead", "leady", "leadů")} ·{" "}
-                {campaign._count.runs}{" "}
-                {pluralCs(campaign._count.runs, "běh", "běhy", "běhů")} · limit{" "}
-                {campaign.dailyLimit}/den · minimální skóre {campaign.minScore}
-              </p>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+
+      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Nová kampaň</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Mise, segment, oblast i rozvrh — vše hned při založení.
+          </p>
+        </div>
+        <NewCampaignForm />
+      </section>
     </div>
   );
 }

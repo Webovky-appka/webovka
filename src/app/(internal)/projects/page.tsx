@@ -53,6 +53,18 @@ export default async function ProjectsPage(props: {
       : {}),
   };
 
+  // Rozjednané akvizice z AI Sales — oslovené firmy před výhrou. Zakázka
+  // z nich vznikne až po vyhrané příležitosti, ale obchodní rozpracovanost
+  // patří na oči vedle zakázek.
+  const acquisitions = await prisma.salesLead.findMany({
+    where: { status: { in: ["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"] } },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      prospect: { select: { name: true, domain: true } },
+      campaign: { select: { name: true } },
+    },
+  });
+
   const projects = await prisma.project.findMany({
     where,
     orderBy: { updatedAt: "desc" },
@@ -172,9 +184,56 @@ export default async function ProjectsPage(props: {
           })}
         </ul>
       )}
+
+      {acquisitions.length > 0 ? (
+        <section className="space-y-3">
+          <div>
+            <h2 className="font-medium text-slate-900">
+              Rozjednané akvizice
+            </h2>
+            <p className="text-sm text-slate-500">
+              Oslovené firmy z AI Sales. Zakázka z nich vznikne po výhře —
+              výsledky zapisujte na detailu příležitosti.
+            </p>
+          </div>
+          <ul className="space-y-1.5">
+            {acquisitions.map((lead) => (
+              <li key={lead.id}>
+                <Link
+                  href={`/sales/leads/${lead.id}`}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:shadow-sm"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-slate-900">
+                      {lead.prospect.name}
+                    </span>
+                    <span className="block truncate text-sm text-slate-500">
+                      {lead.campaign.name}
+                      {lead.prospect.domain ? ` · ${lead.prospect.domain}` : ""}
+                    </span>
+                  </span>
+                  <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs text-sky-800 ring-1 ring-sky-100 ring-inset">
+                    {ACQUISITION_LABELS[lead.status] ?? lead.status}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {formatRelativeDays(lead.updatedAt)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
+
+const ACQUISITION_LABELS: Record<string, string> = {
+  CONTACTED: "Oslovená",
+  REPLIED: "Odpověděli",
+  MEETING: "Schůzka",
+  PROPOSAL: "Nabídka",
+};
 
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   return (

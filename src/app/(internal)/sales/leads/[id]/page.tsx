@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { OutcomePanel } from "@/components/sales/outcome-panel";
+import { ReauditButton } from "@/components/sales/reaudit-button";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -15,7 +16,7 @@ import {
 import { isVisualBreakdown, VISUAL_DIMENSIONS } from "@/lib/sales/visual";
 
 export const metadata = {
-  title: "Lead — Mitsov Web",
+  title: "Příležitost — Mitsov Web",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -65,7 +66,7 @@ export default async function LeadPage(props: {
     where: { id },
     include: {
       prospect: { include: { contacts: { orderBy: { isPrimary: "desc" } } } },
-      campaign: { select: { id: true, name: true } },
+      campaign: { select: { id: true, name: true, minScore: true } },
       audits: { orderBy: { createdAt: "desc" }, take: 1 },
       emails: { orderBy: { createdAt: "desc" }, take: 1 },
       activities: { orderBy: { createdAt: "desc" }, take: 50 },
@@ -81,6 +82,11 @@ export default async function LeadPage(props: {
     lead.prospect.contacts.find((contact) => contact.email) ??
     null;
 
+  const canReaudit =
+    lead.prospect.domain !== null &&
+    ["QUALIFIED", "RESEARCHING", "READY_FOR_REVIEW", "APPROVED"].includes(
+      lead.status,
+    );
   const audit = lead.audits[0] ?? null;
   const findings = (audit?.findings ?? {}) as Findings;
   const evidence = (findings.evidence ?? []).filter((item) =>
@@ -123,10 +129,22 @@ export default async function LeadPage(props: {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-semibold text-slate-900">
+            <p
+              className={`text-2xl font-semibold ${
+                lead.score === null
+                  ? "text-slate-900"
+                  : lead.score >= lead.campaign.minScore
+                    ? "text-emerald-700"
+                    : "text-red-600"
+              }`}
+            >
               {lead.score ?? "—"}
             </p>
             <p className="text-xs text-slate-500">
+              Skóre příležitosti · vyšší = lepší
+            </p>
+            <p className="text-xs text-slate-400">
+              práh kampaně {lead.campaign.minScore} ·{" "}
               {STATUS_LABELS[lead.status] ?? lead.status}
             </p>
           </div>
@@ -163,87 +181,6 @@ export default async function LeadPage(props: {
           </div>
         </dl>
       </section>
-
-      {lead.prospect.contacts.length > 0 ? (
-        <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-semibold text-slate-900">Kontakty</h2>
-          <ul className="space-y-1.5 text-sm">
-            {lead.prospect.contacts.map((contact) => (
-              <li
-                key={contact.id}
-                className="flex flex-wrap items-baseline gap-2"
-              >
-                <span className="text-slate-900">
-                  {contact.name ?? "Obecný kontakt"}
-                  {contact.role ? ` (${contact.role})` : ""}
-                </span>
-                {contact.email ? (
-                  <span className="text-slate-700">{contact.email}</span>
-                ) : null}
-                {contact.phone ? (
-                  <span className="text-slate-500">{contact.phone}</span>
-                ) : null}
-                <span className="text-xs text-slate-400">
-                  {contact.source ?? "bez zdroje"} · confidence{" "}
-                  {Math.round(contact.confidence * 100)} %
-                  {contact.isPrimary ? " · primární" : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {draft && draft.status === "DRAFT" ? (
-        <ReviewPanel
-          draft={{
-            id: draft.id,
-            subject: draft.subject,
-            body: draft.body,
-            strategy: draft.strategy,
-          }}
-          leadId={lead.id}
-          defaultTo={primaryContact?.email ?? ""}
-          gmailAddress={gmailAccount?.email ?? null}
-        />
-      ) : null}
-
-      {["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"].includes(lead.status) ? (
-        <OutcomePanel leadId={lead.id} status={lead.status} />
-      ) : null}
-
-      {lead.status === "WON" ? (
-        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-5">
-          <p className="text-sm font-medium text-emerald-900">
-            Vyhráno. Založte klienta a zakázku — akvizice končí, dodávka začíná.
-          </p>
-          <Link
-            href="/clients/new"
-            className="mt-3 inline-block rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
-          >
-            Založit klienta {lead.prospect.name}
-          </Link>
-        </section>
-      ) : null}
-
-      {draft && draft.status !== "DRAFT" ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">
-              {draft.status === "SENT" ? "Odeslaný e-mail" : "Zamítnutý návrh"}
-            </h2>
-            <p className="text-xs text-slate-500">
-              {draft.sentAt ? formatDateTime(draft.sentAt) : ""}
-            </p>
-          </div>
-          <p className="mt-2 text-sm font-medium text-slate-900">
-            {draft.subject}
-          </p>
-          <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600">
-            {draft.body}
-          </p>
-        </section>
-      ) : null}
 
       {lead.screenshotDesktopKey || lead.screenshotMobileKey ? (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
@@ -300,18 +237,72 @@ export default async function LeadPage(props: {
         </section>
       ) : null}
 
-      {audit ? (
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+      {draft && draft.status === "DRAFT" ? (
+        <ReviewPanel
+          draft={{
+            id: draft.id,
+            subject: draft.subject,
+            body: draft.body,
+            strategy: draft.strategy,
+          }}
+          leadId={lead.id}
+          defaultTo={primaryContact?.email ?? ""}
+          gmailAddress={gmailAccount?.email ?? null}
+        />
+      ) : null}
+
+      {["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"].includes(lead.status) ? (
+        <OutcomePanel leadId={lead.id} status={lead.status} />
+      ) : null}
+
+      {lead.status === "WON" ? (
+        <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-5">
+          <p className="text-sm font-medium text-emerald-900">
+            Vyhráno. Založte klienta a zakázku — akvizice končí, dodávka začíná.
+          </p>
+          <Link
+            href="/clients/new"
+            className="mt-3 inline-block rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+          >
+            Založit klienta {lead.prospect.name}
+          </Link>
+        </section>
+      ) : null}
+
+      {draft && draft.status !== "DRAFT" ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-900">
-              Audit webu
+              {draft.status === "SENT" ? "Odeslaný e-mail" : "Zamítnutý návrh"}
             </h2>
             <p className="text-xs text-slate-500">
-              {formatDateTime(audit.createdAt)}
-              {audit.confidence !== null
-                ? ` · confidence ${Math.round(audit.confidence * 100)} %`
-                : ""}
+              {draft.sentAt ? formatDateTime(draft.sentAt) : ""}
             </p>
+          </div>
+          <p className="mt-2 text-sm font-medium text-slate-900">
+            {draft.subject}
+          </p>
+          <p className="mt-1 text-sm whitespace-pre-wrap text-slate-600">
+            {draft.body}
+          </p>
+        </section>
+      ) : null}
+
+      {audit ? (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Audit webu
+              </h2>
+              <p className="text-xs text-slate-500">
+                {formatDateTime(audit.createdAt)}
+                {audit.confidence !== null
+                  ? ` · jistota ${Math.round(audit.confidence * 100)} %`
+                  : ""}
+              </p>
+            </div>
+            {canReaudit ? <ReauditButton leadId={lead.id} /> : null}
           </div>
 
           {audit.summary ? (
@@ -455,10 +446,48 @@ export default async function LeadPage(props: {
           ) : null}
         </section>
       ) : (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
-          Audit zatím neproběhl. Provede se automaticky v běhu po kvalifikaci.
-        </p>
+        <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
+          <p>
+            Audit zatím neproběhl. Provede se automaticky v běhu po
+            kvalifikaci.
+          </p>
+          {canReaudit ? (
+            <div className="flex justify-center">
+              <ReauditButton leadId={lead.id} />
+            </div>
+          ) : null}
+        </div>
       )}
+
+      {lead.prospect.contacts.length > 0 ? (
+        <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="text-sm font-semibold text-slate-900">Kontakty</h2>
+          <ul className="space-y-1.5 text-sm">
+            {lead.prospect.contacts.map((contact) => (
+              <li
+                key={contact.id}
+                className="flex flex-wrap items-baseline gap-2"
+              >
+                <span className="text-slate-900">
+                  {contact.name ?? "Obecný kontakt"}
+                  {contact.role ? ` (${contact.role})` : ""}
+                </span>
+                {contact.email ? (
+                  <span className="text-slate-700">{contact.email}</span>
+                ) : null}
+                {contact.phone ? (
+                  <span className="text-slate-500">{contact.phone}</span>
+                ) : null}
+                <span className="text-xs text-slate-400">
+                  {contact.source ?? "bez zdroje"} · jistota{" "}
+                  {Math.round(contact.confidence * 100)} %
+                  {contact.isPrimary ? " · primární" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="font-medium text-slate-900">Timeline</h2>

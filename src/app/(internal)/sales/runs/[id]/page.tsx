@@ -106,7 +106,7 @@ export default async function RunPage(props: {
 
       {leads.length > 0 ? (
         <section className="space-y-3">
-          <h2 className="font-medium text-slate-900">Leady z tohoto běhu</h2>
+          <h2 className="font-medium text-slate-900">Příležitosti z tohoto běhu</h2>
           <ul className="space-y-2">
             {leads.map((lead) => (
               <li

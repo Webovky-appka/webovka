@@ -169,7 +169,8 @@ export type AuditOutcome =
 export async function auditLead(options: {
   leadId: string;
   campaign: SalesCampaign;
-  runId: string;
+  /** Běh, který audit vyvolal. Null u ručního přeauditu z detailu. */
+  runId: string | null;
 }): Promise<AuditOutcome> {
   const { leadId, campaign, runId } = options;
 
