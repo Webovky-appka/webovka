@@ -109,7 +109,13 @@ export async function captureScreenshots(
     );
 
     return { desktop, mobile };
-  } catch {
+  } catch (error) {
+    // Screenshot nesmí shodit audit, ale selhání musí být vidět v lozích —
+    // na Vercelu je to jediná stopa (v aktivitě je pak jen screenshots: false).
+    console.error(
+      `[sales] Screenshot ${url} selhal:`,
+      error instanceof Error ? error.message : error,
+    );
     return null;
   } finally {
     await browser?.close().catch(() => {});

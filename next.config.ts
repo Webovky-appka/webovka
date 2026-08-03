@@ -7,6 +7,19 @@ const nextConfig: NextConfig = {
    * a nesmí se řešit při buildu na Vercelu, kde není nainstalovaný.
    */
   serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core", "puppeteer"],
+  /**
+   * Binárku Chromia (bin/*.br) načítá @sparticuz/chromium přes fs až za
+   * běhu, takže ji trasování souborů nevidí a bez tohoto výčtu se do
+   * function bundle na Vercelu vůbec nedostane — spuštění prohlížeče tam
+   * pak potichu selže a audit běží jen z HTML.
+   */
+  outputFileTracingIncludes: {
+    "/api/sales/runs/\\[id\\]/tick": [
+      "./node_modules/@sparticuz/chromium/bin/**/*",
+    ],
+    // Ruční přeaudit je server action stránky detailu příležitosti.
+    "/sales/leads/\\[id\\]": ["./node_modules/@sparticuz/chromium/bin/**/*"],
+  },
   experimental: {
     serverActions: {
       /**
