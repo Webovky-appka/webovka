@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  businessDayKey,
   formatDay,
   formatDayShort,
   isContactStale,
+  isDueTodayOrOverdue,
   isOverdue,
   pluralCs,
   unfinishedTasksPhrase,
@@ -94,6 +96,28 @@ describe("termín po datu", () => {
   it("dávná i vzdálená data vyhodnotí správně", () => {
     expect(isOverdue(dayFromInput("2020-01-01"))).toBe(true);
     expect(isOverdue(dayFromInput("2099-01-01"))).toBe(false);
+  });
+});
+
+describe("dnešní seznam práce", () => {
+  const day = 86_400_000;
+
+  it("dnešní i prošlý termín na něj patří, zítřejší ne", () => {
+    const today = czechTodayAsUtcMidnight();
+    expect(isDueTodayOrOverdue(today)).toBe(true);
+    expect(isDueTodayOrOverdue(new Date(today.getTime() - day))).toBe(true);
+    expect(isDueTodayOrOverdue(new Date(today.getTime() + day))).toBe(false);
+    expect(isDueTodayOrOverdue(null)).toBe(false);
+  });
+});
+
+describe("klíč dne pro denní stavy", () => {
+  it("odpovídá českému kalendáři ve tvaru YYYY-MM-DD", () => {
+    const expected = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Europe/Prague",
+    });
+    expect(businessDayKey()).toBe(expected);
+    expect(businessDayKey()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
 
