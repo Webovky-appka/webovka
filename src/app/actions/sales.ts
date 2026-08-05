@@ -11,8 +11,11 @@ import { sendGmail } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
 import { auditLead } from "@/lib/sales/auditor";
+import { lookupClientDetails } from "@/lib/sales/client-details";
 import { LOST_REASONS } from "@/lib/sales/funnel";
 import { refineDraft } from "@/lib/sales/outreach";
+
+import { createProjectWithPhases } from "./projects";
 
 export type SalesFormState = { error?: string; success?: string } | undefined;
 
@@ -494,9 +497,10 @@ export async function rejectLead(
 }
 
 /**
- * Znovuotevření zamítnuté příležitosti. Vrací ji do nejzazšího stavu, který
- * odpovídá tomu, co už má hotové: s návrhem e-mailu zpět ke schválení
- * (návrh ožije), s auditem mezi kvalifikované, jinak mezi objevené.
+ * Znovuotevření zamítnuté nebo prohrané příležitosti. Zamítnutá se vrací do
+ * nejzazšího stavu, který odpovídá tomu, co už má hotové: s návrhem e-mailu
+ * zpět ke schválení (návrh ožije), s auditem mezi kvalifikované, jinak mezi
+ * objevené. Prohraná se vrací mezi oslovené — e-mail už odešel.
  * Otevřením končí i cooldown — firma přestává být blokovaná pro dedup.
  */
 export async function reopenLead(
@@ -514,8 +518,29 @@ export async function reopenLead(
     },
   });
   if (!lead) return { error: "Příležitost nenalezena." };
-  if (lead.status !== "REJECTED") {
-    return { error: "Znovu otevřít jde jen zamítnutá příležitost." };
+  if (lead.status !== "REJECTED" && lead.status !== "LOST") {
+    return {
+      error: "Znovu otevřít jde jen zamítnutá nebo prohraná příležitost.",
+    };
+  }
+
+  if (lead.status === "LOST") {
+    await prisma.salesLead.update({
+      where: { id: leadId },
+      data: { status: "CONTACTED", lostReason: null },
+    });
+    await prisma.salesActivity.create({
+      data: {
+        prospectId: lead.prospectId,
+        leadId,
+        actor: "user",
+        kind: "reopened",
+        body: `${user.name} prohranou příležitost znovu otevřel — zpět mezi oslovené.`,
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    revalidatePath(`/sales/${lead.campaignId}`);
+    return { success: "Příležitost je zpět mezi oslovenými." };
   }
 
   const draft = lead.emails[0] ?? null;
@@ -553,6 +578,98 @@ export async function reopenLead(
         ? "Příležitost je zpět ke schválení, návrh e-mailu ožil."
         : "Příležitost je znovu otevřená.",
   };
+}
+
+/**
+ * Výhra jedním tlačítkem: založí klienta i zakázku ze všeho, co o firmě
+ * víme (prospect, dohledané kontakty, doména), a chybějící fakturační
+ * údaje (IČO, sídlo) zkusí dohledat AI v rejstřících. Lead končí ve stavu
+ * WON s prolinkem na klienta.
+ */
+export async function foundProjectFromLead(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    include: {
+      prospect: { include: { contacts: { orderBy: { isPrimary: "desc" } } } },
+      campaign: { select: { id: true, name: true } },
+    },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (!OUTCOME_SOURCE.has(lead.status)) {
+    return { error: "Zakázka se zakládá až po oslovení firmy." };
+  }
+  if (lead.clientId) {
+    return { error: "Z této příležitosti už zakázka existuje." };
+  }
+
+  // Fakturační údaje v prospektu nejsou — AI je zkusí dohledat v ARES.
+  // Když se to nepovede, zakázka vznikne i tak a údaje se doplní ručně.
+  const details = isAiConfigured()
+    ? await lookupClientDetails({
+        companyName: lead.prospect.name,
+        location: lead.prospect.location,
+        domain: lead.prospect.domain,
+        campaignId: lead.campaignId,
+        leadId,
+      })
+    : null;
+
+  const primaryContact =
+    lead.prospect.contacts.find((contact) => contact.isPrimary) ??
+    lead.prospect.contacts.find((contact) => contact.email) ??
+    lead.prospect.contacts[0] ??
+    null;
+
+  const client = await prisma.client.create({
+    data: {
+      companyName: lead.prospect.name,
+      contactPerson: primaryContact?.name ?? null,
+      email: primaryContact?.email ?? null,
+      phone: primaryContact?.phone ?? null,
+      website: lead.prospect.domain ? `https://${lead.prospect.domain}` : null,
+      ico: details?.ico ?? null,
+      address: details?.address ?? null,
+      internalNote: [
+        `Založeno z AI Sales — kampaň „${lead.campaign.name}“.`,
+        lead.reason ? `Proč jsme firmu oslovili: ${lead.reason}` : null,
+        details?.ico || details?.address
+          ? "IČO a sídlo dohledala AI — před smlouvou zkontrolujte."
+          : "IČO a sídlo se nepodařilo dohledat — doplňte před smlouvou.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      status: "ACTIVE",
+    },
+    select: { id: true },
+  });
+
+  await createProjectWithPhases(client.id, `Nový web — ${lead.prospect.name}`);
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: "WON", clientId: client.id, lostReason: null },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "won",
+      body: `${user.name} vyhrál příležitost a založil zakázku.`,
+      meta: { clientId: client.id },
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  revalidatePath("/projects");
+  redirect(`/clients/${client.id}`);
 }
 
 /**
@@ -664,6 +781,7 @@ export async function reauditLead(
 
 /** Stavy, které smí uživatel nastavit ručně po oslovení (sekce 29 specky). */
 const MANUAL_OUTCOMES = new Set([
+  "CONTACTED",
   "REPLIED",
   "MEETING",
   "PROPOSAL",
@@ -680,7 +798,8 @@ const OUTCOME_SOURCE = new Set([
 ]);
 
 const OUTCOME_LABELS: Record<string, string> = {
-  REPLIED: "Odpověděl",
+  CONTACTED: "Vráceno na Oslovená",
+  REPLIED: "Odpověděli",
   MEETING: "Domluvená schůzka",
   PROPOSAL: "Poslaná nabídka",
   WON: "Vyhráno",

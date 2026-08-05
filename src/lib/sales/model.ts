@@ -24,6 +24,8 @@ const MODEL_ROUTING: Record<string, { env: string; fallback: string }> = {
   audit: { env: "SALES_MODEL_AUDIT", fallback: "gpt-4o" },
   contact: { env: "SALES_MODEL_CONTACT", fallback: "gpt-4o" },
   outreach: { env: "SALES_MODEL_OUTREACH", fallback: "gpt-4o" },
+  // Dohledání IČO a sídla při zakládání zakázky — web search chce silný model.
+  "client-details": { env: "SALES_MODEL_CONTACT", fallback: "gpt-4o" },
 };
 
 export function resolveModel(task: string): string {

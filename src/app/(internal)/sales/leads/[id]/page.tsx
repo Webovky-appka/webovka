@@ -195,11 +195,13 @@ export default async function LeadPage(props: {
         </dl>
       </section>
 
-      {lead.status === "REJECTED" ? (
+      {lead.status === "REJECTED" || lead.status === "LOST" ? (
         <section className="space-y-3 rounded-xl border border-red-200 bg-red-50/50 p-5">
           <div>
             <h2 className="text-sm font-semibold text-red-900">
-              Zamítnutá příležitost
+              {lead.status === "LOST"
+                ? "Prohraná příležitost"
+                : "Zamítnutá příležitost"}
             </h2>
             <p className="mt-0.5 text-sm text-red-800/80">
               {lead.lostReason ?? "Bez uvedeného důvodu."}
@@ -308,13 +310,17 @@ export default async function LeadPage(props: {
       {lead.status === "WON" ? (
         <section className="rounded-xl border border-emerald-300 bg-emerald-50 p-5">
           <p className="text-sm font-medium text-emerald-900">
-            Vyhráno. Založte klienta a zakázku — akvizice končí, dodávka začíná.
+            {lead.clientId
+              ? "Vyhráno. Zakázka je založená — akvizice končí, dodávka začíná."
+              : "Vyhráno. Založte klienta a zakázku — akvizice končí, dodávka začíná."}
           </p>
           <Link
-            href="/clients/new"
+            href={lead.clientId ? `/clients/${lead.clientId}` : "/clients/new"}
             className="mt-3 inline-block rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
           >
-            Založit klienta {lead.prospect.name}
+            {lead.clientId
+              ? "Otevřít zakázku"
+              : `Založit klienta ${lead.prospect.name}`}
           </Link>
         </section>
       ) : null}

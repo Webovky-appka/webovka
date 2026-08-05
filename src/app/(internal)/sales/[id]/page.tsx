@@ -22,6 +22,27 @@ const RUN_LABELS: Record<string, string> = {
   FAILED: "Selhal",
 };
 
+/** Skupiny seznamu: rozpracované, jednání, výhry a prohry zvlášť. */
+const LEAD_GROUPS: { title: string; statuses: string[] }[] = [
+  {
+    title: "V přípravě",
+    statuses: [
+      "DISCOVERED",
+      "QUALIFYING",
+      "QUALIFIED",
+      "RESEARCHING",
+      "READY_FOR_REVIEW",
+      "APPROVED",
+    ],
+  },
+  {
+    title: "Oslovené — jednáme",
+    statuses: ["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"],
+  },
+  { title: "Vyhrané", statuses: ["WON"] },
+  { title: "Prohrané", statuses: ["LOST"] },
+];
+
 const LEAD_LABELS: Record<string, string> = {
   DISCOVERED: "Objevená",
   QUALIFYING: "Kvalifikuje se",
@@ -177,71 +198,81 @@ export default async function CampaignPage(props: {
         </section>
       </div>
 
-      {campaign.leads.length > 0 ? (
-        <section className="space-y-3">
-          <h2 className="font-medium text-slate-900">Příležitosti</h2>
-          <ul className="space-y-2">
-            {campaign.leads.map((lead) => (
-              <li
-                key={lead.id}
-                className="rounded-xl border border-slate-200 bg-white p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-3">
-                    {lead.screenshotDesktopKey ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/api/sales/screenshots/${lead.id}/desktop`}
-                        alt=""
-                        className="h-12 w-20 shrink-0 rounded border border-slate-200 object-cover object-top"
-                      />
-                    ) : null}
-                    <div className="min-w-0">
-                      <Link
-                        href={`/sales/leads/${lead.id}`}
-                        className="font-medium text-slate-900 hover:underline"
-                      >
-                        {lead.prospect.name}
-                      </Link>{" "}
-                      {lead.prospect.domain ? (
-                        <a
-                          href={`https://${lead.prospect.domain}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-sky-700 underline hover:text-sky-900"
-                        >
-                          {lead.prospect.domain}
-                        </a>
+      {LEAD_GROUPS.map((group) => {
+        const groupLeads = campaign.leads.filter((lead) =>
+          group.statuses.includes(lead.status),
+        );
+        if (groupLeads.length === 0) return null;
+        return (
+          <section key={group.title} className="space-y-3">
+            <h2 className="font-medium text-slate-900">
+              {group.title} ({groupLeads.length})
+            </h2>
+            <ul className="space-y-2">
+              {groupLeads.map((lead) => (
+                <li
+                  key={lead.id}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      {lead.screenshotDesktopKey ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/sales/screenshots/${lead.id}/desktop`}
+                          alt=""
+                          className="h-12 w-20 shrink-0 rounded border border-slate-200 object-cover object-top"
+                        />
                       ) : null}
+                      <div className="min-w-0">
+                        <Link
+                          href={`/sales/leads/${lead.id}`}
+                          className="font-medium text-slate-900 hover:underline"
+                        >
+                          {lead.prospect.name}
+                        </Link>{" "}
+                        {lead.prospect.domain ? (
+                          <a
+                            href={`https://${lead.prospect.domain}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-sky-700 underline hover:text-sky-900"
+                          >
+                            {lead.prospect.domain}
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p
+                        className={`text-lg font-semibold ${
+                          lead.score === null
+                            ? "text-slate-900"
+                            : lead.score >= campaign.minScore
+                              ? "text-emerald-700"
+                              : "text-red-600"
+                        }`}
+                      >
+                        {lead.score ?? "—"}
+                      </p>
+                      <p
+                        className={`text-xs ${lead.status === "LOST" ? "font-medium text-red-600" : lead.status === "WON" ? "font-medium text-emerald-700" : "text-slate-500"}`}
+                      >
+                        {LEAD_LABELS[lead.status] ?? lead.status}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p
-                      className={`text-lg font-semibold ${
-                        lead.score === null
-                          ? "text-slate-900"
-                          : lead.score >= campaign.minScore
-                            ? "text-emerald-700"
-                            : "text-red-600"
-                      }`}
-                    >
-                      {lead.score ?? "—"}
+                  {lead.reason ? (
+                    <p className="mt-2 line-clamp-2 text-sm text-slate-600">
+                      {lead.reason}
                     </p>
-                    <p className="text-xs text-slate-500">
-                      {LEAD_LABELS[lead.status] ?? lead.status}
-                    </p>
-                  </div>
-                </div>
-                {lead.reason ? (
-                  <p className="mt-2 line-clamp-2 text-sm text-slate-600">
-                    {lead.reason}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
 
       {rejectedCount > 0 ? (
         <section className="space-y-3">

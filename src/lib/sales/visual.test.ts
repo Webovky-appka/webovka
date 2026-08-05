@@ -59,3 +59,14 @@ describe("multimodální vstup modelu", () => {
     );
   });
 });
+
+describe("validace IČO při zakládání zakázky", () => {
+  it("bere jen přesně 8 číslic, mezery toleruje", async () => {
+    const { validIcoOrNull } = await import("@/lib/sales/client-details");
+    expect(validIcoOrNull("12345678")).toBe("12345678");
+    expect(validIcoOrNull("123 456 78")).toBe("12345678");
+    expect(validIcoOrNull("1234567")).toBeNull();
+    expect(validIcoOrNull("neznámé")).toBeNull();
+    expect(validIcoOrNull(null)).toBeNull();
+  });
+});
