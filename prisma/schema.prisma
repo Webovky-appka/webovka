@@ -152,6 +152,7 @@ model Client {
   projects    Project[]
   messages    Message[]
   attachments Attachment[]
+  salesLeads  SalesLead[]
 
   @@index([status])
 }
@@ -502,11 +503,15 @@ model SalesLead {
   /// Snímky podstránek: [{ label, key }]. Domovská stránka nestačí —
   /// rezervace nebo galerie bývají jinde a audit je jinak křivdí.
   screenshotPages      Json?
+  /// Klient založený z vyhrané příležitosti. Drží prolink na zakázku;
+  /// smazání klienta vazbu jen uvolní, výhra v historii zůstává.
+  clientId             String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
   prospect   Prospect          @relation(fields: [prospectId], references: [id], onDelete: Cascade)
   campaign   SalesCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  client     Client?           @relation(fields: [clientId], references: [id], onDelete: SetNull)
   audits     SalesAudit[]
   emails     SalesEmailDraft[]
   activities SalesActivity[]
