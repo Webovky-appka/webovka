@@ -93,6 +93,14 @@ export default async function LeadPage(props: {
     isEvidenceKind(item.kind),
   );
   const visual = isVisualBreakdown(findings.visual) ? findings.visual : null;
+  const screenshotPages = (
+    Array.isArray(lead.screenshotPages) ? lead.screenshotPages : []
+  ).filter(
+    (page): page is { label: string; key: string } =>
+      typeof page === "object" &&
+      page !== null &&
+      typeof (page as { key?: unknown }).key === "string",
+  );
 
   return (
     <div className="space-y-5">
@@ -234,6 +242,29 @@ export default async function LeadPage(props: {
               </a>
             ) : null}
           </div>
+          {screenshotPages.length > 0 ? (
+            <div className="flex flex-wrap items-start gap-4">
+              {screenshotPages.map((page, index) => (
+                <a
+                  key={page.key}
+                  href={`/api/sales/screenshots/${lead.id}/page-${index}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-48 min-w-0"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/sales/screenshots/${lead.id}/page-${index}`}
+                    alt={`Screenshot podstránky ${page.label}`}
+                    className="w-full rounded-lg border border-slate-200"
+                  />
+                  <p className="mt-1 truncate text-center text-xs text-slate-400">
+                    {page.label || `Podstránka ${index + 1}`}
+                  </p>
+                </a>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

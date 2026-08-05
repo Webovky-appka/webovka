@@ -497,6 +497,9 @@ model SalesLead {
   screenshotDesktopKey String?
   screenshotMobileKey  String?
   screenshotAt         DateTime?
+  /// Snímky podstránek: [{ label, key }]. Domovská stránka nestačí —
+  /// rezervace nebo galerie bývají jinde a audit je jinak křivdí.
+  screenshotPages      Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
