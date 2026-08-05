@@ -246,6 +246,7 @@ export default async function CampaignPage(props: {
       {rejectedCount > 0 ? (
         <section className="space-y-3">
           <Link
+            scroll={false}
             href={
               showRejected ? `/sales/${campaign.id}` : `/sales/${campaign.id}?zamitnute=1`
             }
