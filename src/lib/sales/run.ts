@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auditLead } from "@/lib/sales/auditor";
 import { researchContact } from "@/lib/sales/contact";
+import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { draftOutreach } from "@/lib/sales/outreach";
 import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
 
@@ -120,17 +121,30 @@ async function saveRun(
  * takže jeden běh nikdy nezkouší totéž donekonečna.
  */
 
-/** Leady s auditem čekající na dohledání kontaktu (stav QUALIFIED + audit). */
+/**
+ * Leady čekající na dohledání kontaktu: kvalifikované s hotovým auditem —
+ * a firmy bez vlastního webu, které audit nemají mít (jdou rovnou dál).
+ */
 async function pendingContactIds(
   stats: RunStats,
   campaignId: string,
 ): Promise<string[]> {
   const waiting = await prisma.salesLead.findMany({
-    where: { campaignId, status: "QUALIFIED", audits: { some: {} } },
-    select: { id: true },
+    where: { campaignId, status: "QUALIFIED" },
+    select: {
+      id: true,
+      prospect: { select: { domain: true } },
+      _count: { select: { audits: true } },
+    },
   });
 
   return waiting
+    .filter(
+      (lead) =>
+        lead._count.audits > 0 ||
+        !lead.prospect.domain ||
+        isSharedPlatformDomain(lead.prospect.domain),
+    )
     .map((lead) => lead.id)
     .filter((id) => (stats.contactAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
@@ -150,17 +164,25 @@ async function pendingOutreachIds(
     .filter((id) => (stats.outreachAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
 
-/** Kvalifikované leady kampaně bez auditu. */
+/**
+ * Kvalifikované leady kampaně bez auditu. Firmy bez vlastního webu se
+ * vynechávají — není co auditovat, jdou rovnou na kontakt.
+ */
 async function pendingAuditIds(
   stats: RunStats,
   campaignId: string,
 ): Promise<string[]> {
   const waiting = await prisma.salesLead.findMany({
     where: { campaignId, status: "QUALIFIED", audits: { none: {} } },
-    select: { id: true },
+    select: { id: true, prospect: { select: { domain: true } } },
   });
 
   return waiting
+    .filter(
+      (lead) =>
+        lead.prospect.domain !== null &&
+        !isSharedPlatformDomain(lead.prospect.domain),
+    )
     .map((lead) => lead.id)
     .filter((id) => (stats.auditAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }

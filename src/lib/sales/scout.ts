@@ -4,7 +4,11 @@ import type { SalesCampaign } from "@prisma/client";
 import * as z from "zod";
 
 import { prisma } from "@/lib/prisma";
-import { dedupeDecision, normalizeDomain } from "@/lib/sales/dedupe";
+import {
+  dedupeDecision,
+  isSharedPlatformDomain,
+  normalizeDomain,
+} from "@/lib/sales/dedupe";
 import { fetchSiteSummary } from "@/lib/sales/fetch-site";
 import { callAgentModel } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
@@ -42,7 +46,11 @@ const DISCOVER_JSON_SCHEMA = {
         required: ["name", "url", "location", "industry", "reason", "signals"],
         properties: {
           name: { type: "string" },
-          url: { type: "string", description: "Adresa webu firmy" },
+          url: {
+            type: "string",
+            description:
+              "Adresa webu firmy. U firem bez vlastního webu plná adresa jejich stránky (např. facebook.com/nazevpodniku), pokud ji z vyhledávání skutečně znáš; jinak prázdný řetězec. NIKDY si adresu nevymýšlej a nikdy nepiš jen doménu platformy.",
+          },
           location: { type: "string" },
           industry: { type: "string" },
           reason: {
@@ -130,9 +138,14 @@ export async function discoverCandidates(options: {
     campaign.geography ? `Oblast: ${campaign.geography}` : null,
     "",
     `Najdi pomocí vyhledávání na webu nejvýš ${candidateTarget(campaign)} firem,`,
-    "které odpovídají misi. Pro každou uveď skutečnou adresu jejího webu —",
-    "firmy bez vlastního webu vynech. U každé napiš, proč je vhodným kandidátem,",
-    "a ověřitelné signály (hodnocení, počet recenzí, stáří webu, aktivita).",
+    "které odpovídají misi. Pro každou uveď skutečnou adresu jejího webu.",
+    "Firmy bez vlastního webu jsou nejcennější kandidáti — u nich uveď plnou",
+    "adresu jejich stránky (např. facebook.com/nazevpodniku nebo",
+    "instagram.com/ucet), pokud jsi ji vyhledáváním skutečně našel; když ji",
+    "neznáš, nech url prázdné a firmu přesto uveď. Adresu si NIKDY nevymýšlej",
+    "a nikdy nepiš jen samotnou doménu platformy. U každé napiš, proč je",
+    "vhodným kandidátem, a ověřitelné signály (hodnocení, počet recenzí,",
+    "stáří webu, aktivita).",
     "Nevymýšlej si — uváděj jen firmy, které jsi vyhledáváním skutečně našel.",
   ]
     .filter((line): line is string => line !== null)
@@ -156,15 +169,18 @@ export async function discoverCandidates(options: {
     return { ok: false, error: result.error, inspected: 0, createdLeadIds: [], skipped: [] };
   }
 
-  // Weby stávajících klientů se neoslovují nikdy.
+  // Stávající klienti se neoslovují nikdy — poznávají se podle domény webu
+  // a u firem bez webu aspoň podle jména.
   const clients = await prisma.client.findMany({
-    select: { website: true },
-    where: { website: { not: null } },
+    select: { website: true, companyName: true },
   });
   const clientDomains = new Set(
     clients
       .map((client) => normalizeDomain(client.website))
       .filter((domain): domain is string => domain !== null),
+  );
+  const clientNames = new Set(
+    clients.map((client) => client.companyName.trim().toLowerCase()),
   );
 
   const createdLeadIds: string[] = [];
@@ -181,20 +197,25 @@ export async function discoverCandidates(options: {
     }
     seenInRun.add(key);
 
-    if (!domain) {
-      skipped.push({ name: candidate.name, reason: "bez použitelné domény" });
-      continue;
-    }
-
-    const existing = await prisma.prospect.findUnique({
-      where: { domain },
-      include: {
-        leads: { select: { status: true, updatedAt: true } },
-      },
-    });
+    // Firma bez použitelné adresy se zakládá s prázdnou doménou — bez webu
+    // není co auditovat, ale obchodně je to nejcennější kandidát. Dedup
+    // se u ní dělá podle jména, doména jinak zůstává primárním klíčem.
+    const existing = domain
+      ? await prisma.prospect.findUnique({
+          where: { domain },
+          include: { leads: { select: { status: true, updatedAt: true } } },
+        })
+      : await prisma.prospect.findFirst({
+          where: {
+            name: { equals: candidate.name.trim(), mode: "insensitive" },
+          },
+          include: { leads: { select: { status: true, updatedAt: true } } },
+        });
 
     const decision = dedupeDecision({
-      isClient: clientDomains.has(domain),
+      isClient: domain
+        ? clientDomains.has(domain)
+        : clientNames.has(candidate.name.trim().toLowerCase()),
       existingLeads: existing?.leads ?? [],
     });
 
@@ -265,9 +286,14 @@ export async function qualifyLead(options: {
   });
   if (!lead) return { ok: false, error: "Lead nenalezen." };
 
-  const site = lead.prospect.domain
-    ? await fetchSiteSummary(lead.prospect.domain)
-    : null;
+  // Firma jen se stránkou na sdílené platformě vlastní web nemá — není co
+  // stahovat (platformy fetch blokují) a hodnotí se síla podniku ze signálů.
+  const noOwnWebsite =
+    !lead.prospect.domain || isSharedPlatformDomain(lead.prospect.domain);
+  const site =
+    !noOwnWebsite && lead.prospect.domain
+      ? await fetchSiteSummary(lead.prospect.domain)
+      : null;
 
   const prompt = await getActivePrompt("scout");
 
@@ -277,24 +303,34 @@ export async function qualifyLead(options: {
     `Firma: ${lead.prospect.name}`,
     `Obor: ${lead.prospect.industry ?? "neznámý"}`,
     `Místo: ${lead.prospect.location ?? "neznámé"}`,
-    `Web: ${lead.prospect.domain ?? "neznámý"}`,
+    noOwnWebsite
+      ? `Web: NEMÁ vlastní${lead.prospect.domain ? ` — jen stránku ${lead.prospect.domain}` : ""}`
+      : `Web: ${lead.prospect.domain ?? "neznámý"}`,
     `Proč byl kandidát vybrán: ${lead.reason ?? "bez důvodu"}`,
     "",
-    site
+    noOwnWebsite
       ? [
-          "Co je vidět na homepage:",
-          `Titulek: ${site.title ?? "chybí"}`,
-          `Popis: ${site.description ?? "chybí"}`,
-          site.headings.length > 0
-            ? `Nadpisy: ${site.headings.join(" | ")}`
-            : "Nadpisy: žádné",
-          `Výňatek textu: ${site.excerpt}`,
+          "Firma nemá vlastní web, jen stránku na sdílené platformě.",
+          "websiteScore dej 0–15 (vlastní web neexistuje). businessScore posuď",
+          "ze signálů z vyhledávání (hodnocení, recenze, aktivita). Silný podnik",
+          "bez webu je pro nás nejlepší možná příležitost — stavíme první web.",
         ].join("\n")
-      : "Web se nepodařilo načíst — hodnoť s nižší confidence a napiš to do reason.",
+      : site
+        ? [
+            "Co je vidět na homepage:",
+            `Titulek: ${site.title ?? "chybí"}`,
+            `Popis: ${site.description ?? "chybí"}`,
+            site.headings.length > 0
+              ? `Nadpisy: ${site.headings.join(" | ")}`
+              : "Nadpisy: žádné",
+            `Výňatek textu: ${site.excerpt}`,
+          ].join("\n")
+        : "Web se nepodařilo načíst — hodnoť s nižší confidence a napiš to do reason.",
     "",
     "Oboduj: businessScore = síla a věrohodnost firmy, websiteScore = kvalita",
     "současného webu (vyšší číslo znamená lepší web), score = celková obchodní",
-    "příležitost pro redesign. Nejlepší příležitost je silná firma se slabým webem.",
+    "příležitost. Nejlepší příležitost je silná firma se slabým webem — nebo",
+    "úplně bez něj.",
   ].join("\n");
 
   const result = await callAgentModel({

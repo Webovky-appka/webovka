@@ -1,3 +1,4 @@
+import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { usableInOutreach, type EvidenceItem } from "@/lib/sales/evidence";
 
 /**
@@ -40,6 +41,7 @@ export type OutreachFacts = {
 
 export function buildOutreachInput(facts: OutreachFacts): string {
   const usable = usableInOutreach(facts.evidence);
+  const noOwnWebsite = !facts.domain || isSharedPlatformDomain(facts.domain);
 
   // Nejvýš dva nejvážnější problémy — e-mail má zmínit jedno až dvě
   // pozorování, ne vysypat celý audit (sekce 13.1).
@@ -62,10 +64,23 @@ export function buildOutreachInput(facts: OutreachFacts): string {
       ? `Adresát: ${facts.contact.name ?? "jméno neznámé"}${facts.contact.role ? ` (${facts.contact.role})` : ""}`
       : "Adresát: neznámý, oslov obecně",
     "",
+    ...(noOwnWebsite
+      ? [
+          `Firma NEMÁ vlastní web${facts.domain ? ` — má jen stránku ${facts.domain}` : ""}.`,
+          "Hlavní nabídka: postavíme jí první vlastní web. Argumenty: zákazníci",
+          "z Googlu ji dnes nenajdou, je závislá na cizí platformě a nemá vlastní",
+          "rezervace/objednávky. NEpiš o „vylepšení webu“ — žádný web nemá.",
+          "",
+        ]
+      : []),
     "Ověřená pozorování z webu (jen tato smíš v e-mailu tvrdit):",
     ...(usable.length > 0
       ? usable.map((item) => `- ${item.claim} [${item.source}]`)
-      : ["- žádná — piš obecněji a nic o webu netvrď"]),
+      : noOwnWebsite
+        ? [
+            "- firma nemá vlastní web (ověřeno Scoutem) — to je jediné tvrzení o „webu“, které smíš použít",
+          ]
+        : ["- žádná — piš obecněji a nic o webu netvrď"]),
     "",
     "Hlavní problémy z auditu (interní kontext, vyber nejvýš 1–2 a formuluj zdvořile):",
     ...(topProblems.length > 0

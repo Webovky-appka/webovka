@@ -3,7 +3,9 @@ import "server-only";
 /**
  * Levné nahlédnutí na web firmy pro kvalifikaci — titulek, popis, nadpisy
  * a kus textu. Žádný headless prohlížeč; screenshoty a hluboký audit přijdou
- * s Auditorem. Doména sem přichází už znormalizovaná (bez IP a localhostu).
+ * s Auditorem. Doména sem přichází už znormalizovaná (bez IP a localhostu);
+ * u firem na sdílené platformě obsahuje i cestu ke stránce podniku
+ * (facebook.com/nazevpodniku), takže se stahuje stránka firmy, ne root platformy.
  */
 const TIMEOUT_MS = 8_000;
 const MAX_HTML_BYTES = 400_000;

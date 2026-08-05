@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { dedupeDecision, normalizeDomain } from "./dedupe";
+import {
+  dedupeDecision,
+  isSharedPlatformDomain,
+  isSharedPlatformUrl,
+  normalizeDomain,
+} from "./dedupe";
 import { costMicroUsd, WEB_SEARCH_FEE_MICRO_USD } from "./pricing";
 
 describe("normalizace domény", () => {
@@ -26,6 +31,68 @@ describe("normalizace domény", () => {
 
   it("zachová subdomény kromě www", () => {
     expect(normalizeDomain("https://eshop.firma.cz/kosik")).toBe("eshop.firma.cz");
+  });
+});
+
+describe("sdílené platformní domény", () => {
+  it("u facebookové stránky zachová cestu, jinak by všechny firmy splynuly", () => {
+    for (const value of [
+      "https://www.facebook.com/BonjourVietnamPraha",
+      "https://m.facebook.com/BonjourVietnamPraha/",
+      "facebook.com/bonjourvietnampraha?locale=cs_CZ",
+    ]) {
+      expect(normalizeDomain(value)).toBe("facebook.com/bonjourvietnampraha");
+    }
+  });
+
+  it("dvě různé stránky na téže platformě dostanou různé klíče", () => {
+    expect(normalizeDomain("facebook.com/prvnipodnik")).not.toBe(
+      normalizeDomain("facebook.com/druhypodnik"),
+    );
+    expect(normalizeDomain("https://www.instagram.com/kavarna_u_lipy/")).toBe(
+      "instagram.com/kavarna_u_lipy",
+    );
+    expect(normalizeDomain("linktr.ee/bistro.na.rohu")).toBe(
+      "linktr.ee/bistro.na.rohu",
+    );
+  });
+
+  it("root sdílené platformy podnik neidentifikuje a vrací null", () => {
+    expect(normalizeDomain("facebook.com")).toBeNull();
+    expect(normalizeDomain("https://www.facebook.com/")).toBeNull();
+    expect(normalizeDomain("instagram.com")).toBeNull();
+    expect(normalizeDomain("https://www.google.com")).toBeNull();
+  });
+
+  it("identitu v parametru dotazu zachová, šum zahodí", () => {
+    expect(normalizeDomain("https://www.facebook.com/profile.php?id=61553012345")).toBe(
+      "facebook.com/profile.php?id=61553012345",
+    );
+    expect(
+      normalizeDomain("https://instagram.com/kavarna_u_lipy?igsh=MXc2ZnZ4"),
+    ).toBe("instagram.com/kavarna_u_lipy");
+  });
+
+  it("z mapových URL vynechá souřadnice a datové bloby", () => {
+    expect(
+      normalizeDomain(
+        "https://www.google.com/maps/place/Bonjour+Vietnam/@50.075,14.437,17z/data=!3m1!4b1",
+      ),
+    ).toBe("google.com/maps/place/bonjour+vietnam");
+  });
+
+  it("krátké domény typu m.me nerozbije odřezávání mobilních prefixů", () => {
+    expect(normalizeDomain("m.me/nazevpodniku")).toBe("m.me/nazevpodniku");
+    expect(normalizeDomain("m.facebook.com/nazevpodniku")).toBe(
+      "facebook.com/nazevpodniku",
+    );
+  });
+
+  it("isSharedPlatformUrl poznává platformy včetně subdomén", () => {
+    expect(isSharedPlatformUrl("https://facebook.com")).toBe(true);
+    expect(isSharedPlatformUrl("maps.google.com/maps")).toBe(true);
+    expect(isSharedPlatformUrl("https://www.pekarna.cz")).toBe(false);
+    expect(isSharedPlatformUrl("nesmysl")).toBe(false);
   });
 });
 
@@ -120,5 +187,19 @@ describe("cena volání", () => {
     expect(
       costMicroUsd({ model: "cosi-noveho", tokensIn: 5000, tokensOut: 5000 }),
     ).toBe(0);
+  });
+});
+
+describe("doména sdílené platformy na prospektu", () => {
+  it("pozná stránku podniku i s parametrem identity", () => {
+    expect(isSharedPlatformDomain("facebook.com/kavarna-u-lipy")).toBe(true);
+    expect(isSharedPlatformDomain("facebook.com/profile.php?id=123")).toBe(true);
+    expect(isSharedPlatformDomain("instagram.com/mako_sushi")).toBe(true);
+  });
+
+  it("vlastní web ani prázdno platformou nejsou", () => {
+    expect(isSharedPlatformDomain("kavarnaulipy.cz")).toBe(false);
+    expect(isSharedPlatformDomain(null)).toBe(false);
+    expect(isSharedPlatformDomain("")).toBe(false);
   });
 });
