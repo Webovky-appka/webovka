@@ -494,6 +494,68 @@ export async function rejectLead(
 }
 
 /**
+ * Znovuotevření zamítnuté příležitosti. Vrací ji do nejzazšího stavu, který
+ * odpovídá tomu, co už má hotové: s návrhem e-mailu zpět ke schválení
+ * (návrh ožije), s auditem mezi kvalifikované, jinak mezi objevené.
+ * Otevřením končí i cooldown — firma přestává být blokovaná pro dedup.
+ */
+export async function reopenLead(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    include: {
+      emails: { orderBy: { createdAt: "desc" }, take: 1 },
+      _count: { select: { audits: true } },
+    },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (lead.status !== "REJECTED") {
+    return { error: "Znovu otevřít jde jen zamítnutá příležitost." };
+  }
+
+  const draft = lead.emails[0] ?? null;
+  const nextStatus = draft
+    ? "READY_FOR_REVIEW"
+    : lead._count.audits > 0
+      ? "QUALIFIED"
+      : "DISCOVERED";
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: nextStatus, lostReason: null },
+  });
+  if (draft && draft.status === "REJECTED") {
+    await prisma.salesEmailDraft.update({
+      where: { id: draft.id },
+      data: { status: "DRAFT" },
+    });
+  }
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "reopened",
+      body: `${user.name} příležitost znovu otevřel.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  return {
+    success:
+      nextStatus === "READY_FOR_REVIEW"
+        ? "Příležitost je zpět ke schválení, návrh e-mailu ožil."
+        : "Příležitost je znovu otevřená.",
+  };
+}
+
+/**
  * Přepsání návrhu e-mailu AI podle pokynu uživatele. Návrh zůstává ve stavu
  * DRAFT — o odeslání pořád rozhoduje člověk tlačítkem.
  */

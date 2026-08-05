@@ -40,22 +40,38 @@ const LEAD_LABELS: Record<string, string> = {
 
 export default async function CampaignPage(props: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ zamitnute?: string }>;
 }) {
   await requireUser();
   const { id } = await props.params;
+  const { zamitnute } = await props.searchParams;
+  const showRejected = zamitnute === "1";
 
-  const campaign = await prisma.salesCampaign.findUnique({
-    where: { id },
-    include: {
-      runs: { orderBy: { createdAt: "desc" }, take: 10 },
-      leads: {
-        orderBy: { updatedAt: "desc" },
-        take: 30,
-        include: { prospect: { select: { name: true, domain: true } } },
+  const [campaign, rejectedCount, rejectedLeads] = await Promise.all([
+    prisma.salesCampaign.findUnique({
+      where: { id },
+      include: {
+        runs: { orderBy: { createdAt: "desc" }, take: 10 },
+        // Aktivní příležitosti od nejlepší — zamítnuté mají vlastní seznam.
+        leads: {
+          where: { status: { not: "REJECTED" } },
+          orderBy: { score: { sort: "desc", nulls: "last" } },
+          take: 30,
+          include: { prospect: { select: { name: true, domain: true } } },
+        },
+        _count: { select: { leads: true } },
       },
-      _count: { select: { leads: true } },
-    },
-  });
+    }),
+    prisma.salesLead.count({ where: { campaignId: id, status: "REJECTED" } }),
+    showRejected
+      ? prisma.salesLead.findMany({
+          where: { campaignId: id, status: "REJECTED" },
+          orderBy: { score: { sort: "desc", nulls: "last" } },
+          take: 50,
+          include: { prospect: { select: { name: true, domain: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
 
   if (!campaign) notFound();
 
@@ -224,6 +240,60 @@ export default async function CampaignPage(props: {
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {rejectedCount > 0 ? (
+        <section className="space-y-3">
+          <Link
+            href={
+              showRejected ? `/sales/${campaign.id}` : `/sales/${campaign.id}?zamitnute=1`
+            }
+            className="inline-block rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+          >
+            {showRejected
+              ? "Skrýt zamítnuté"
+              : `Zobrazit zamítnuté (${rejectedCount})`}
+          </Link>
+          {showRejected ? (
+            <ul className="space-y-2">
+              {rejectedLeads.map((lead) => (
+                <li
+                  key={lead.id}
+                  className="rounded-xl border border-red-100 bg-white p-4 opacity-90"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/sales/leads/${lead.id}`}
+                        className="font-medium text-slate-900 hover:underline"
+                      >
+                        {lead.prospect.name}
+                      </Link>{" "}
+                      {lead.prospect.domain ? (
+                        <span className="text-sm text-slate-400">
+                          {lead.prospect.domain}
+                        </span>
+                      ) : null}
+                      {lead.lostReason ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {lead.lostReason}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-semibold text-slate-400">
+                        {lead.score ?? "—"}
+                      </p>
+                      <p className="text-xs font-medium text-red-600">
+                        Zamítnutá
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
       ) : null}
 

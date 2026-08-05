@@ -39,11 +39,15 @@ describe("ochranná pravidla v promptech", () => {
     expect(DEFAULT_PROMPTS.contact).toContain("zdroj");
   });
 
-  it("outreach má zákaz vymýšlení, limit délky a možnost odmítnutí", () => {
+  it("outreach má zákaz vymýšlení, limit délky a jediný podpis", () => {
     expect(DEFAULT_PROMPTS.outreach).toContain("Nevymýšlej si fakta");
     expect(DEFAULT_PROMPTS.outreach).toContain("120 až 180 slov");
-    expect(DEFAULT_PROMPTS.outreach).toContain("už se neozveme");
     expect(DEFAULT_PROMPTS.outreach).toContain("Podpis přesně jednou");
+    // Věta o odmítnutí je na přání uživatele pryč a nesmí se vrátit.
+    expect(DEFAULT_PROMPTS.outreach).not.toContain("už se neozveme");
+    expect(DEFAULT_PROMPTS.outreach).toContain(
+      "Žádnou větu o možnosti odmítnutí",
+    );
   });
 
   it("auditor odděluje pozorování od úsudku a netvrdí bez důkazu", () => {
