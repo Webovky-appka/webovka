@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { OutcomePanel } from "@/components/sales/outcome-panel";
 import { ReauditButton } from "@/components/sales/reaudit-button";
+import { ReopenButton } from "@/components/sales/reopen-button";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -189,6 +190,20 @@ export default async function LeadPage(props: {
           </div>
         </dl>
       </section>
+
+      {lead.status === "REJECTED" ? (
+        <section className="space-y-3 rounded-xl border border-red-200 bg-red-50/50 p-5">
+          <div>
+            <h2 className="text-sm font-semibold text-red-900">
+              Zamítnutá příležitost
+            </h2>
+            <p className="mt-0.5 text-sm text-red-800/80">
+              {lead.lostReason ?? "Bez uvedeného důvodu."}
+            </p>
+          </div>
+          <ReopenButton leadId={lead.id} />
+        </section>
+      ) : null}
 
       {lead.screenshotDesktopKey || lead.screenshotMobileKey ? (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">

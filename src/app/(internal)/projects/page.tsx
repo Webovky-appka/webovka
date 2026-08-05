@@ -269,12 +269,18 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
   const [reviewLeads, repliedLeads, dueTasks, activeProjects] =
     await Promise.all([
       prisma.salesLead.findMany({
-        where: { status: "READY_FOR_REVIEW" },
+        where: {
+          status: "READY_FOR_REVIEW",
+          campaign: { status: { not: "ARCHIVED" } },
+        },
         orderBy: { score: "desc" },
         include: { prospect: { select: { name: true } } },
       }),
       prisma.salesLead.findMany({
-        where: { status: "REPLIED" },
+        where: {
+          status: "REPLIED",
+          campaign: { status: { not: "ARCHIVED" } },
+        },
         orderBy: { updatedAt: "desc" },
         include: { prospect: { select: { name: true } } },
       }),

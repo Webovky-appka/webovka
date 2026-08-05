@@ -20,16 +20,24 @@ const RUN_STATUS_LABELS: Record<string, string> = {
 };
 
 const LEAD_STATUS_LABELS: Record<string, string> = {
-  DISCOVERED: "Objevený",
-  QUALIFIED: "Kvalifikovaný",
-  REJECTED: "Zamítnutý",
+  DISCOVERED: "Objevená",
+  QUALIFYING: "Kvalifikuje se",
+  QUALIFIED: "Kvalifikovaná",
+  RESEARCHING: "Doplňuje se research",
+  READY_FOR_REVIEW: "Ke schválení",
+  APPROVED: "Schválená",
+  CONTACTED: "Oslovená",
+  REJECTED: "Zamítnutá",
 };
 
 export default async function RunPage(props: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ zamitnute?: string }>;
 }) {
   await requireUser();
   const { id } = await props.params;
+  const { zamitnute } = await props.searchParams;
+  const showRejected = zamitnute === "1";
 
   const run = await prisma.salesRun.findUnique({
     where: { id },
@@ -43,7 +51,7 @@ export default async function RunPage(props: {
   const stats = (run.stats ?? {}) as Partial<RunStats>;
   const leadIds = stats.leadIds ?? [];
 
-  const leads =
+  const allLeads =
     leadIds.length > 0
       ? await prisma.salesLead.findMany({
           where: { id: { in: leadIds } },
@@ -51,6 +59,9 @@ export default async function RunPage(props: {
           orderBy: { score: { sort: "desc", nulls: "last" } },
         })
       : [];
+  // Zamítnuté neplevelí hlavní seznam — mají vlastní sekci za tlačítkem.
+  const leads = allLeads.filter((lead) => lead.status !== "REJECTED");
+  const rejectedLeads = allLeads.filter((lead) => lead.status === "REJECTED");
 
   const totalCost = run.agentRuns.reduce(
     (sum, agentRun) => sum + agentRun.costMicroUsd,
@@ -150,6 +161,57 @@ export default async function RunPage(props: {
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {rejectedLeads.length > 0 ? (
+        <section className="space-y-3">
+          <Link
+            href={
+              showRejected
+                ? `/sales/runs/${run.id}`
+                : `/sales/runs/${run.id}?zamitnute=1`
+            }
+            className="inline-block rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+          >
+            {showRejected
+              ? "Skrýt zamítnuté"
+              : `Zobrazit zamítnuté (${rejectedLeads.length})`}
+          </Link>
+          {showRejected ? (
+            <ul className="space-y-2">
+              {rejectedLeads.map((lead) => (
+                <li
+                  key={lead.id}
+                  className="rounded-xl border border-red-100 bg-white p-4 opacity-90"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={`/sales/leads/${lead.id}`}
+                        className="font-medium text-slate-900 hover:underline"
+                      >
+                        {lead.prospect.name}
+                      </Link>
+                      {lead.lostReason ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {lead.lostReason}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-semibold text-slate-400">
+                        {lead.score ?? "—"}
+                      </p>
+                      <p className="text-xs font-medium text-red-600">
+                        Zamítnutá
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
       ) : null}
 

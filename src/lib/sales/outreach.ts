@@ -37,7 +37,7 @@ const DRAFT_JSON_SCHEMA = {
     body: {
       type: "string",
       description:
-        "Tělo e-mailu včetně oslovení a podpisu, 120–180 slov, s větou o možnosti odmítnutí",
+        "Tělo e-mailu včetně oslovení a podpisu, 120–180 slov, bez věty o odmítnutí",
     },
     strategy: { type: "string", enum: [...OUTREACH_STRATEGIES] },
     summary: { type: "string", description: "Jedna věta: jaký hook a proč" },
@@ -163,7 +163,7 @@ const REFINE_JSON_SCHEMA = {
     body: {
       type: "string",
       description:
-        "Upravené tělo e-mailu včetně oslovení, podpisu a věty o možnosti odmítnutí",
+        "Upravené tělo e-mailu včetně oslovení a podpisu",
     },
     summary: { type: "string", description: "Jedna věta: co se změnilo" },
   },
@@ -212,7 +212,8 @@ export async function refineDraft(options: {
     "Pravidla úpravy:",
     "- Vyhov pokynu, ale drž pravidla své identity (tón, vykání, rozsah).",
     "- NESMÍŠ přidat žádné nové faktické tvrzení o firmě, které v aktuálním textu není.",
-    "- Zachovej větu o možnosti odmítnutí a právě jeden podpis.",
+    "- Zachovej právě jeden podpis.",
+    "- Pokud text obsahuje větu o možnosti odmítnutí („stačí odpovědět a už se neozveme“ apod.), odstraň ji.",
   ].join("\n");
 
   const result = await callAgentModel({
