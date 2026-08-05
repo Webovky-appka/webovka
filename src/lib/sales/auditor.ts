@@ -201,6 +201,7 @@ export async function auditLead(options: {
         screenshotDesktopKey: shots.desktopKey,
         screenshotMobileKey: shots.mobileKey,
         screenshotAt: new Date(),
+        screenshotPages: shots.pages,
       },
     });
   }
@@ -208,15 +209,20 @@ export async function auditLead(options: {
   const images: AgentImage[] = shots
     ? [
         {
-          label: "screenshot desktop 1440×900",
+          label: "screenshot domovská stránka, desktop 1440×900",
           data: shots.capture.desktop,
           mimeType: "image/jpeg",
         },
         {
-          label: "screenshot mobil 390×844",
+          label: "screenshot domovská stránka, mobil 390×844",
           data: shots.capture.mobile,
           mimeType: "image/jpeg",
         },
+        ...shots.capture.extraPages.map((page) => ({
+          label: `screenshot podstránky „${page.label}", desktop`,
+          data: page.data,
+          mimeType: "image/jpeg",
+        })),
       ]
     : [];
 
@@ -225,9 +231,10 @@ export async function auditLead(options: {
   const evidenceRules = shots
     ? [
         "Proveď audit podle svých pravidel. Pamatuj:",
-        "- Přiložené jsou screenshoty: první desktop (1440×900), druhý mobil (390×844).",
-        "- Co je na screenshotu vidět (rozložení, chybějící CTA, malé fotografie), je OBSERVED se zdrojem „screenshot desktop“ nebo „screenshot mobil“.",
+        `- Přiložené screenshoty: domovská stránka desktop a mobil${shots.pages.length > 0 ? ` a ${shots.pages.length} podstránky (${shots.pages.map((page) => page.label).join(", ")})` : ""}.`,
+        "- Co je na screenshotu vidět (rozložení, CTA, kvalita fotografií), je OBSERVED se zdrojem „screenshot …“.",
         "- Estetický dojem (zastaralost, elegance) zůstává AI_JUDGMENT, i když vychází ze screenshotu.",
+        "- NIKDY netvrď, že něco chybí, dokud jsi to nezkontroloval na všech snímcích i v navigaci. Tlačítko „Rezervace“ na screenshotu znamená, že rezervace NEchybí. Když si nejsi jistý (funkce může být na podstránce, kterou nevidíš), označ to UNKNOWN a nedávej to do problems.",
       ]
     : [
         "Proveď audit podle svých pravidel. Pamatuj:",
@@ -256,7 +263,14 @@ export async function auditLead(options: {
     "- Co je přímo v podkladech (chybějící viewport, počty, texty), je OBSERVED.",
     "- Co z pozorovaného vyplývá, je DERIVED. Co nevíš, je UNKNOWN — neskóruj to vysoko.",
     "- Rozpad visual: každou dimenzi ohodnoť 0–10 podle toho, co skutečně vidíš.",
-    `- finalScore je obchodní příležitost pro redesign v kontextu mise: ${campaign.mission}`,
+    "",
+    "Kalibrace skóre kvality webu (buď důrazný na obě strany):",
+    "- 85–100: moderní, profesionální web bez zásadních vad. Takový web NEPŘEPÍŠEME lépe — přiznej to.",
+    "- 70–84: solidní web, jen drobnosti. Redesign se těžko obhajuje.",
+    "- 50–69: průměr se zjevnými slabinami, redesign má smysl.",
+    "- 0–49: zastaralý nebo rozbitý web, redesign je jasný přínos.",
+    "- Neschovávej se do středu škály. Hezký web dostane vysoký vizuál a NÍZKÉ finalScore — falešně nízké hodnocení znamená spam dobré firmě a ostudu studia.",
+    `- finalScore je obchodní příležitost pro redesign v kontextu mise: ${campaign.mission}. Čím lepší web, tím NIŽŠÍ finalScore.`,
   ].join("\n");
 
   const result = await callAgentModel({

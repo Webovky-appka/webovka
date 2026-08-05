@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
 import { auditLead } from "@/lib/sales/auditor";
 import { LOST_REASONS } from "@/lib/sales/funnel";
+import { refineDraft } from "@/lib/sales/outreach";
 
 export type SalesFormState = { error?: string; success?: string } | undefined;
 
@@ -490,6 +491,40 @@ export async function rejectLead(
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath(`/sales/${lead.campaignId}`);
   return { success: "Příležitost zamítnuta. Firma je půl roku v cooldownu." };
+}
+
+/**
+ * Přepsání návrhu e-mailu AI podle pokynu uživatele. Návrh zůstává ve stavu
+ * DRAFT — o odeslání pořád rozhoduje člověk tlačítkem.
+ */
+export async function refineEmailDraft(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+  if (!isAiConfigured()) {
+    return { error: "Chybí OPENAI_API_KEY, úprava AI nejde spustit." };
+  }
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const leadId = String(formData.get("leadId") ?? "");
+  const instruction = String(formData.get("instruction") ?? "").trim();
+  if (instruction.length < 5) {
+    return { error: "Napište, co má AI na e-mailu změnit." };
+  }
+  if (instruction.length > 500) {
+    return { error: "Pokyn je příliš dlouhý." };
+  }
+
+  const outcome = await refineDraft({
+    draftId,
+    instruction,
+    userName: user.name,
+  });
+  if (!outcome.ok) return { error: outcome.error };
+
+  if (leadId) revalidatePath(`/sales/leads/${leadId}`);
+  return { success: "E-mail upraven podle pokynu. Zkontrolujte ho níž." };
 }
 
 /** Stavy, ve kterých dává smysl web přeauditovat — před oslovením. */

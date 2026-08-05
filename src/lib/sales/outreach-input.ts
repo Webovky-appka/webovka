@@ -78,7 +78,11 @@ export function buildOutreachInput(facts: OutreachFacts): string {
       ? `Naše doporučení z auditu: ${facts.recommendation}`
       : "Bez doporučení.",
     "",
-    `Podepiš: ${facts.senderName}, Mitsov Web`,
+    // Když odesílá „Mitsov Web" (fallback bez jména), nesmí vzniknout
+    // zdvojení „Mitsov Web, Mitsov Web" v podpisu.
+    facts.senderName === "Mitsov Web"
+      ? "Podepiš: Mitsov Web"
+      : `Podepiš: ${facts.senderName}, Mitsov Web`,
     "Vyber strategii hooku: visual / observation / business — podle toho, co máš v ruce.",
   ].join("\n");
 }

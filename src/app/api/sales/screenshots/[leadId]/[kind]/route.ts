@@ -16,16 +16,27 @@ export async function GET(
   }
 
   const { leadId, kind } = await context.params;
-  if (kind !== "desktop" && kind !== "mobile") {
+  if (kind !== "desktop" && kind !== "mobile" && !/^page-[0-9]$/.test(kind)) {
     return new Response("Nenalezeno", { status: 404 });
   }
 
   const lead = await prisma.salesLead.findUnique({
     where: { id: leadId },
-    select: { screenshotDesktopKey: true, screenshotMobileKey: true },
+    select: {
+      screenshotDesktopKey: true,
+      screenshotMobileKey: true,
+      screenshotPages: true,
+    },
   });
+  const pages = Array.isArray(lead?.screenshotPages)
+    ? (lead.screenshotPages as { label?: string; key?: string }[])
+    : [];
   const storageKey =
-    kind === "desktop" ? lead?.screenshotDesktopKey : lead?.screenshotMobileKey;
+    kind === "desktop"
+      ? lead?.screenshotDesktopKey
+      : kind === "mobile"
+        ? lead?.screenshotMobileKey
+        : (pages[Number(kind.slice("page-".length))]?.key ?? null);
   if (!storageKey) return new Response("Nenalezeno", { status: 404 });
 
   let bytes: Buffer;

@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import {
   approveAndSendEmail,
   markEmailSentManually,
+  refineEmailDraft,
   rejectLead,
   saveEmailDraft,
   type SalesFormState,
@@ -49,6 +50,10 @@ export function ReviewPanel({
     SalesFormState,
     FormData
   >(rejectLead, undefined);
+  const [refined, refineAction, refining] = useActionState<
+    SalesFormState,
+    FormData
+  >(refineEmailDraft, undefined);
 
   const feedback = sent ?? marked ?? saved;
 
@@ -65,7 +70,14 @@ export function ReviewPanel({
         ) : null}
       </div>
 
-      <form id={`review-${draft.id}`} action={sendAction} className="space-y-4">
+      {/* Klíč podle obsahu: po úpravě AI se políčka přemontují s novým
+          textem — defaultValue se jinak po hydrataci už nemění. */}
+      <form
+        key={draft.subject + draft.body}
+        id={`review-${draft.id}`}
+        action={sendAction}
+        className="space-y-4"
+      >
         <input type="hidden" name="draftId" value={draft.id} />
 
         <Field
@@ -138,6 +150,35 @@ export function ReviewPanel({
           <p className="text-xs text-amber-700">
             Gmail není napojený — Schválit a odeslat poradí, ať ho napojíte
             v Nastavení, nebo použijte Označit jako odeslaný.
+          </p>
+        ) : null}
+      </form>
+
+      <hr className="border-slate-100" />
+
+      <form action={refineAction} className="space-y-2">
+        <input type="hidden" name="draftId" value={draft.id} />
+        <input type="hidden" name="leadId" value={leadId} />
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            name="instruction"
+            placeholder="Pokyn pro AI — např.: přátelštější tón, zmiň letní sezónu, zkrať to"
+            aria-label="Pokyn pro úpravu e-mailu"
+            className="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          />
+          <button
+            type="submit"
+            disabled={refining}
+            className={secondaryButton}
+            title="AI přepíše návrh podle pokynu. Nic se neodesílá."
+          >
+            {refining ? "Upravuji…" : "Upravit AI"}
+          </button>
+        </div>
+        <FormError message={refined?.error} />
+        {refined?.success ? (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {refined.success}
           </p>
         ) : null}
       </form>

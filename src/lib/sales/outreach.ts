@@ -37,7 +37,7 @@ const DRAFT_JSON_SCHEMA = {
     body: {
       type: "string",
       description:
-        "Tělo e-mailu včetně oslovení a podpisu, pod 110 slov, s větou o možnosti odmítnutí",
+        "Tělo e-mailu včetně oslovení a podpisu, 120–180 slov, s větou o možnosti odmítnutí",
     },
     strategy: { type: "string", enum: [...OUTREACH_STRATEGIES] },
     summary: { type: "string", description: "Jedna věta: jaký hook a proč" },
@@ -146,4 +146,103 @@ export async function draftOutreach(options: {
   });
 
   return { ok: true, strategy: result.data.strategy };
+}
+
+const RefineSchema = z.object({
+  subject: z.string().min(1).max(120),
+  body: z.string().min(50),
+  summary: z.string(),
+});
+
+const REFINE_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["subject", "body", "summary"],
+  properties: {
+    subject: { type: "string", description: "Upravený předmět e-mailu" },
+    body: {
+      type: "string",
+      description:
+        "Upravené tělo e-mailu včetně oslovení, podpisu a věty o možnosti odmítnutí",
+    },
+    summary: { type: "string", description: "Jedna věta: co se změnilo" },
+  },
+} as const;
+
+/**
+ * Přepíše rozepsaný návrh podle pokynu uživatele (review, sekce 14).
+ * Anti-halucinační hranice zůstává: úprava nesmí přidat žádné nové faktické
+ * tvrzení o firmě — smí jen přeskládat a přeformulovat to, co v návrhu už je.
+ */
+export async function refineDraft(options: {
+  draftId: string;
+  instruction: string;
+  userName: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const draft = await prisma.salesEmailDraft.findUnique({
+    where: { id: options.draftId },
+    include: {
+      lead: {
+        select: {
+          id: true,
+          campaignId: true,
+          prospectId: true,
+          prospect: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!draft) return { ok: false, error: "Návrh nenalezen." };
+  if (draft.status !== "DRAFT") {
+    return { ok: false, error: "Upravit jde jen neodeslaný návrh." };
+  }
+
+  const prompt = await getActivePrompt("outreach");
+
+  const input = [
+    `Uprav rozepsaný e-mail pro firmu ${draft.lead.prospect.name} podle pokynu uživatele.`,
+    "",
+    `Pokyn uživatele: ${options.instruction}`,
+    "",
+    `Aktuální předmět: ${draft.subject}`,
+    "",
+    "Aktuální text:",
+    draft.body,
+    "",
+    "Pravidla úpravy:",
+    "- Vyhov pokynu, ale drž pravidla své identity (tón, vykání, rozsah).",
+    "- NESMÍŠ přidat žádné nové faktické tvrzení o firmě, které v aktuálním textu není.",
+    "- Zachovej větu o možnosti odmítnutí a právě jeden podpis.",
+  ].join("\n");
+
+  const result = await callAgentModel({
+    task: "outreach",
+    agent: "outreach",
+    system: prompt.system,
+    input,
+    schemaName: "outreach_refine",
+    jsonSchema: REFINE_JSON_SCHEMA,
+    zodSchema: RefineSchema,
+    promptVersionId: prompt.versionId,
+    campaignId: draft.lead.campaignId,
+    leadId: draft.lead.id,
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+
+  await prisma.salesEmailDraft.update({
+    where: { id: draft.id },
+    data: { subject: result.data.subject, body: result.data.body },
+  });
+
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.lead.id,
+      actor: "outreach",
+      kind: "draft",
+      body: `${options.userName} nechal návrh upravit AI: „${options.instruction.slice(0, 120)}“. ${result.data.summary}`,
+    },
+  });
+
+  return { ok: true };
 }
