@@ -89,3 +89,41 @@ describe("strategie hooku", () => {
     expect(isOutreachStrategy(null)).toBe(false);
   });
 });
+
+describe("firma bez vlastního webu", () => {
+  it("podklady nabízejí první web a zakazují mluvit o vylepšení", () => {
+    const input = buildOutreachInput({
+      companyName: "Kavárna U Lípy",
+      domain: "facebook.com/kavarna-u-lipy",
+      industry: "kavárna",
+      location: "Praha",
+      reason: "silné hodnocení, žádný web",
+      mission: "kavárny bez webu",
+      contact: null,
+      problems: [],
+      recommendation: null,
+      evidence: [],
+      senderName: "Mitsov Web",
+    });
+    expect(input).toContain("NEMÁ vlastní web");
+    expect(input).toContain("postavíme jí první vlastní web");
+    expect(input).toContain("firma nemá vlastní web (ověřeno Scoutem)");
+  });
+
+  it("firma s vlastním webem řádky o platformě nedostane", () => {
+    const input = buildOutreachInput({
+      companyName: "Restaurace",
+      domain: "restaurace.cz",
+      industry: null,
+      location: null,
+      reason: null,
+      mission: "mise",
+      contact: null,
+      problems: [],
+      recommendation: null,
+      evidence: [],
+      senderName: "Mitsov Web",
+    });
+    expect(input).not.toContain("NEMÁ vlastní web");
+  });
+});

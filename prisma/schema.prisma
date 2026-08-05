@@ -466,7 +466,9 @@ model SalesCampaign {
 model Prospect {
   id          String   @id @default(cuid())
   name        String
-  /// Doména webu bez protokolu, klíč pro deduplikaci.
+  /// Doména webu bez protokolu, klíč pro deduplikaci. U firem na sdílené
+  /// platformě včetně cesty ke stránce podniku (facebook.com/nazevpodniku),
+  /// protože samotná doména je společná tisícům firem.
   domain      String?  @unique
   industry    String?
   location    String?

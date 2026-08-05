@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { googleAccountFor } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
+import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import {
   EVIDENCE_LABELS,
   isEvidenceKind,
@@ -83,8 +84,11 @@ export default async function LeadPage(props: {
     lead.prospect.contacts.find((contact) => contact.email) ??
     null;
 
+  const noOwnWebsite =
+    !lead.prospect.domain || isSharedPlatformDomain(lead.prospect.domain);
   const canReaudit =
     lead.prospect.domain !== null &&
+    !noOwnWebsite &&
     ["QUALIFIED", "RESEARCHING", "READY_FOR_REVIEW", "APPROVED"].includes(
       lead.status,
     );
@@ -494,8 +498,9 @@ export default async function LeadPage(props: {
       ) : (
         <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
           <p>
-            Audit zatím neproběhl. Provede se automaticky v běhu po
-            kvalifikaci.
+            {noOwnWebsite
+              ? "Firma nemá vlastní web — audit se u ní přeskakuje a e-mail nabízí stavbu prvního webu."
+              : "Audit zatím neproběhl. Provede se automaticky v běhu po kvalifikaci."}
           </p>
           {canReaudit ? (
             <div className="flex justify-center">

@@ -4,6 +4,7 @@ import type { SalesCampaign } from "@prisma/client";
 import * as z from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { EVIDENCE_KINDS } from "@/lib/sales/evidence";
 import { fetchAuditContent } from "@/lib/sales/fetch-site";
 import { callAgentModel, type AgentImage } from "@/lib/sales/model";
@@ -181,6 +182,12 @@ export async function auditLead(options: {
   if (!lead) return { ok: false, error: "Lead nenalezen." };
   if (!lead.prospect.domain) {
     return { ok: false, error: "Lead nemá doménu, není co auditovat." };
+  }
+  if (isSharedPlatformDomain(lead.prospect.domain)) {
+    return {
+      ok: false,
+      error: "Firma nemá vlastní web — audit se přeskakuje.",
+    };
   }
 
   const content = await fetchAuditContent(lead.prospect.domain);
