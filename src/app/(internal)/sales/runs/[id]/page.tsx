@@ -167,6 +167,7 @@ export default async function RunPage(props: {
       {rejectedLeads.length > 0 ? (
         <section className="space-y-3">
           <Link
+            scroll={false}
             href={
               showRejected
                 ? `/sales/runs/${run.id}`

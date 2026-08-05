@@ -181,6 +181,7 @@ export default async function SalesPage(props: {
       {archivedCampaigns.length > 0 ? (
         <section className="space-y-3">
           <Link
+            scroll={false}
             href={showArchived ? "/sales" : "/sales?archiv=1"}
             className="inline-block rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
           >
