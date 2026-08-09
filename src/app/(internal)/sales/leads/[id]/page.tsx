@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { OutcomePanel } from "@/components/sales/outcome-panel";
 import { ReauditButton } from "@/components/sales/reaudit-button";
 import { ReopenButton } from "@/components/sales/reopen-button";
+import { RateWebsite } from "@/components/sales/rate-website";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -101,7 +102,7 @@ export default async function LeadPage(props: {
   const screenshotPages = (
     Array.isArray(lead.screenshotPages) ? lead.screenshotPages : []
   ).filter(
-    (page): page is { label: string; key: string } =>
+    (page): page is { label: string; key: string; url?: string } =>
       typeof page === "object" &&
       page !== null &&
       typeof (page as { key?: unknown }).key === "string",
@@ -266,26 +267,44 @@ export default async function LeadPage(props: {
           {screenshotPages.length > 0 ? (
             <div className="flex flex-wrap items-start gap-4">
               {screenshotPages.map((page, index) => (
-                <a
-                  key={page.key}
-                  href={`/api/sales/screenshots/${lead.id}/page-${index}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-48 min-w-0"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`/api/sales/screenshots/${lead.id}/page-${index}`}
-                    alt={`Screenshot podstránky ${page.label}`}
-                    className="w-full rounded-lg border border-slate-200"
-                  />
-                  <p className="mt-1 truncate text-center text-xs text-slate-400">
-                    {page.label || `Podstránka ${index + 1}`}
-                  </p>
-                </a>
+                <div key={page.key} className="w-48 min-w-0">
+                  <a
+                    href={`/api/sales/screenshots/${lead.id}/page-${index}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/sales/screenshots/${lead.id}/page-${index}`}
+                      alt={`Screenshot podstránky ${page.label}`}
+                      className="w-full rounded-lg border border-slate-200"
+                    />
+                  </a>
+                  {page.url ? (
+                    <a
+                      href={page.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 block truncate text-center text-xs text-sky-700 underline-offset-2 hover:underline"
+                      title={page.url}
+                    >
+                      {page.label || `Podstránka ${index + 1}`} ↗
+                    </a>
+                  ) : (
+                    <p className="mt-1 truncate text-center text-xs text-slate-400">
+                      {page.label || `Podstránka ${index + 1}`}
+                    </p>
+                  )}
+                </div>
               ))}
             </div>
           ) : null}
+          <RateWebsite
+            leadId={lead.id}
+            humanScore={lead.humanWebScore}
+            modelScore={lead.websiteScore}
+          />
         </section>
       ) : null}
 
@@ -505,7 +524,7 @@ export default async function LeadPage(props: {
         <div className="space-y-3 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center text-sm text-slate-500">
           <p>
             {noOwnWebsite
-              ? "Firma nemá vlastní web — audit se u ní přeskakuje a e-mail nabízí stavbu prvního webu."
+              ? "Vlastní web firmy se nenašel — audit se přeskakuje a e-mail nabízí stavbu prvního webu. Když ho Contact Research dodatečně objeví, příležitost se do auditu vrátí sama."
               : "Audit zatím neproběhl. Provede se automaticky v běhu po kvalifikaci."}
           </p>
           {canReaudit ? (

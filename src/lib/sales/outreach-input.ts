@@ -66,10 +66,12 @@ export function buildOutreachInput(facts: OutreachFacts): string {
     "",
     ...(noOwnWebsite
       ? [
-          `Firma NEMÁ vlastní web${facts.domain ? ` — má jen stránku ${facts.domain}` : ""}.`,
+          `Vlastní web firmy jsme při hledání NENAŠLI${facts.domain ? ` — známe jen stránku ${facts.domain}` : ""}.`,
           "Hlavní nabídka: postavíme jí první vlastní web. Argumenty: zákazníci",
-          "z Googlu ji dnes nenajdou, je závislá na cizí platformě a nemá vlastní",
-          "rezervace/objednávky. NEpiš o „vylepšení webu“ — žádný web nemá.",
+          "z Googlu ji dnes těžko najdou, je závislá na cizí platformě a nemá",
+          "vlastní rezervace/objednávky. NEpiš o „vylepšení webu“ a NIKDY netvrď",
+          "absolutně „nemáte web“ — formuluj jako „nepodařilo se nám najít váš",
+          "web“. Když se mýlíme, zdvořilá formulace nás zachrání.",
           "",
         ]
       : []),
@@ -78,7 +80,7 @@ export function buildOutreachInput(facts: OutreachFacts): string {
       ? usable.map((item) => `- ${item.claim} [${item.source}]`)
       : noOwnWebsite
         ? [
-            "- firma nemá vlastní web (ověřeno Scoutem) — to je jediné tvrzení o „webu“, které smíš použít",
+            "- vlastní web firmy se nám nepodařilo najít — jediné tvrzení o „webu“, které smíš použít, a jen touto formulací",
           ]
         : ["- žádná — piš obecněji a nic o webu netvrď"]),
     "",

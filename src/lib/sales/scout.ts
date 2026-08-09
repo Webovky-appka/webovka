@@ -304,13 +304,13 @@ export async function qualifyLead(options: {
     `Obor: ${lead.prospect.industry ?? "neznámý"}`,
     `Místo: ${lead.prospect.location ?? "neznámé"}`,
     noOwnWebsite
-      ? `Web: NEMÁ vlastní${lead.prospect.domain ? ` — jen stránku ${lead.prospect.domain}` : ""}`
+      ? `Web: vlastní se nenašel${lead.prospect.domain ? ` — jen stránka ${lead.prospect.domain}` : ""}`
       : `Web: ${lead.prospect.domain ?? "neznámý"}`,
     `Proč byl kandidát vybrán: ${lead.reason ?? "bez důvodu"}`,
     "",
     noOwnWebsite
       ? [
-          "Firma nemá vlastní web, jen stránku na sdílené platformě.",
+          "Vlastní web firmy se při hledání nenašel (může mít jen stránku na platformě).",
           "websiteScore dej 0–15 (vlastní web neexistuje). businessScore posuď",
           "ze signálů z vyhledávání (hodnocení, recenze, aktivita). Silný podnik",
           "bez webu je pro nás nejlepší možná příležitost — stavíme první web.",

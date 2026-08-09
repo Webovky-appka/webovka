@@ -4,6 +4,7 @@ import type { SalesCampaign } from "@prisma/client";
 import * as z from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { isSharedPlatformDomain, normalizeDomain } from "@/lib/sales/dedupe";
 import { normalizeFoundEmail } from "@/lib/sales/email-hygiene";
 import { callAgentModel } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
@@ -29,13 +30,15 @@ const ContactSchema = z.object({
       isDecisionMaker: z.boolean(),
     }),
   ),
+  /** Vlastní web firmy, pokud na něj research narazil. Prázdné = nenašel. */
+  website: z.string(),
   summary: z.string(),
 });
 
 const CONTACT_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["contacts", "summary"],
+  required: ["contacts", "website", "summary"],
   properties: {
     contacts: {
       type: "array",
@@ -74,6 +77,11 @@ const CONTACT_JSON_SCHEMA = {
           isDecisionMaker: { type: "boolean" },
         },
       },
+    },
+    website: {
+      type: "string",
+      description:
+        "Adresa VLASTNÍHO webu firmy, pokud jsi na něj při hledání narazil (ne Facebook ani katalogy). Prázdný řetězec, když web nemá nebo sis nejistý.",
     },
     summary: { type: "string" },
   },
@@ -124,6 +132,8 @@ export async function researchContact(options: {
     "Když najdeš jen obecný kontakt (info@…), ulož ho a rozhodující osobu uveď",
     "zvlášť, klidně bez e-mailu. U každého kontaktu uveď přesný zdroj.",
     "E-mailovou adresu NIKDY nesestavuj podle vzoru — jen co jsi skutečně našel.",
+    "Pokud při hledání narazíš na VLASTNÍ web firmy, vrať jeho adresu v poli",
+    "website — i když ho máme vedené jako firmu bez webu.",
   ].join("\n");
 
   const result = await callAgentModel({
@@ -181,9 +191,33 @@ export async function researchContact(options: {
     });
   }
 
+  // Firma vedená bez vlastního webu, u které research na web narazil:
+  // doména se doplní a příležitost se vrací do auditu — „nemá web“ byla
+  // jen díra ve vyhledávání, ne fakt.
+  const hadOwnWebsite =
+    lead.prospect.domain !== null &&
+    !isSharedPlatformDomain(lead.prospect.domain);
+  const foundDomain = normalizeDomain(result.data.website);
+  let websiteDiscovered = false;
+
+  if (!hadOwnWebsite && foundDomain && !isSharedPlatformDomain(foundDomain)) {
+    const taken = await prisma.prospect.findUnique({
+      where: { domain: foundDomain },
+      select: { id: true },
+    });
+    if (!taken || taken.id === lead.prospectId) {
+      await prisma.prospect.update({
+        where: { id: lead.prospectId },
+        data: { domain: foundDomain },
+      });
+      websiteDiscovered = true;
+    }
+  }
+
   await prisma.salesLead.update({
     where: { id: leadId },
-    data: { status: "RESEARCHING" },
+    // Nalezený web znamená návrat do auditu — teď je co fotit a hodnotit.
+    data: { status: websiteDiscovered ? "QUALIFIED" : "RESEARCHING" },
   });
 
   const withEmail = cleaned.filter((contact) => contact.email !== null).length;
@@ -194,11 +228,15 @@ export async function researchContact(options: {
       leadId,
       actor: "contact",
       kind: "contact_research",
-      body:
+      body: [
         cleaned.length === 0
           ? "Kontakt se nepodařilo dohledat. Doplníte ho ručně při schvalování."
           : `Dohledáno ${cleaned.length} kontaktů, z toho ${withEmail} s e-mailem. ${result.data.summary}`,
-      meta: { runId },
+        websiteDiscovered
+          ? ` Našel se vlastní web ${foundDomain} — příležitost se vrací do auditu.`
+          : "",
+      ].join(""),
+      meta: { runId, websiteDiscovered },
     },
   });
 

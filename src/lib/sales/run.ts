@@ -402,8 +402,17 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
   }
 
   const remainingOutreach = await pendingOutreachIds(stats, run.campaignId);
+  // Dřívější fáze mohly frontu znovu naplnit — třeba contact research
+  // dohledal vlastní web a vrátil lead do auditu. Dokončit se smí, až když
+  // je prázdno všude.
+  const reopenedAudits = await pendingAuditIds(stats, run.campaignId);
+  const reopenedContacts = await pendingContactIds(stats, run.campaignId);
 
-  if (remainingOutreach.length === 0) {
+  if (
+    remainingOutreach.length === 0 &&
+    reopenedAudits.length === 0 &&
+    reopenedContacts.length === 0
+  ) {
     log(
       stats,
       `Hotovo: ${stats.qualified} kvalifikovaných, ${stats.audited} auditovaných, ${stats.drafts} návrhů ke schválení, ${stats.rejected} zamítnutých.`,
