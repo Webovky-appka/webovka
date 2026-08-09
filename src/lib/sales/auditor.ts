@@ -9,8 +9,9 @@ import { EVIDENCE_KINDS } from "@/lib/sales/evidence";
 import { fetchAuditContent } from "@/lib/sales/fetch-site";
 import { callAgentModel, type AgentImage } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
-import { captureAndStore } from "@/lib/sales/screenshot";
+import { captureAndStore, salesScreenshotKey } from "@/lib/sales/screenshot";
 import { VISUAL_DIMENSIONS } from "@/lib/sales/visual";
+import { readFile } from "@/lib/storage";
 
 /**
  * Auditor: hluboké hodnocení webu kvalifikovaného leadu (sekce 9 specifikace).
@@ -233,6 +234,44 @@ export async function auditLead(options: {
       ]
     : [];
 
+  // Kalibrace lidskou laťkou: poslední weby ohodnocené majitelem studia se
+  // přikládají jako vzorové snímky. Model má tendenci mačkat vše do středu
+  // škály — příklady s lidskou známkou ho srovnávají s tím, kdo weby staví.
+  const calibrationNotes: string[] = [];
+  if (shots) {
+    const rated = await prisma.salesLead.findMany({
+      where: {
+        humanWebScore: { not: null },
+        screenshotDesktopKey: { not: null },
+        id: { not: leadId },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        humanWebScore: true,
+        websiteScore: true,
+        prospect: { select: { name: true } },
+      },
+    });
+
+    for (const example of rated) {
+      try {
+        const data = await readFile(salesScreenshotKey(example.id, "desktop"));
+        images.push({
+          label: `kalibrační příklad: ${example.prospect.name}`,
+          data,
+          mimeType: "image/jpeg",
+        });
+        calibrationNotes.push(
+          `${calibrationNotes.length + 1}. ${example.prospect.name} — majitel studia hodnotí ${example.humanWebScore}/100${example.websiteScore !== null ? ` (dřívější odhad modelu ${example.websiteScore})` : ""}`,
+        );
+      } catch {
+        // Snímek už v úložišti není — příklad se prostě vynechá.
+      }
+    }
+  }
+
   const prompt = await getActivePrompt("auditor");
 
   const evidenceRules = shots
@@ -278,6 +317,14 @@ export async function auditLead(options: {
     "- 0–49: zastaralý nebo rozbitý web, redesign je jasný přínos.",
     "- Neschovávej se do středu škály. Hezký web dostane vysoký vizuál a NÍZKÉ finalScore — falešně nízké hodnocení znamená spam dobré firmě a ostudu studia.",
     `- finalScore je obchodní příležitost pro redesign v kontextu mise: ${campaign.mission}. Čím lepší web, tím NIŽŠÍ finalScore.`,
+    ...(calibrationNotes.length > 0
+      ? [
+          "",
+          `Vzory od majitele studia: ZA snímky auditovaného webu následuje ${calibrationNotes.length} kalibračních snímků jiných webů v tomto pořadí:`,
+          ...calibrationNotes,
+          "Jeho známka je závazná laťka — své hodnocení srovnej podle ní, ne podle obecného vkusu.",
+        ]
+      : []),
   ].join("\n");
 
   const result = await callAgentModel({

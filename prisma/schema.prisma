@@ -506,6 +506,10 @@ model SalesLead {
   /// Klient založený z vyhrané příležitosti. Drží prolink na zakázku;
   /// smazání klienta vazbu jen uvolní, výhra v historii zůstává.
   clientId             String?
+  /// Hodnocení webu majitelem studia 0–100 — kalibrační vzor pro příští
+  /// audity. Model má laťku jinde než člověk, který weby staví.
+  humanWebScore        Int?
+  humanWebNote         String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

@@ -204,7 +204,7 @@ async function settleAndShoot(page: Page): Promise<Buffer> {
   );
 }
 
-export type PageCapture = { label: string; data: Buffer };
+export type PageCapture = { label: string; data: Buffer; url: string };
 
 export type ScreenshotCapture = {
   desktop: Buffer;
@@ -298,7 +298,11 @@ export async function captureScreenshots(
           continue;
         }
 
-        extraPages.push({ label: subpage.label.slice(0, 40), data: shot });
+        extraPages.push({
+          label: subpage.label.slice(0, 40),
+          data: shot,
+          url: subpage.href,
+        });
       } catch (error) {
         console.error(
           `[sales] Screenshot podstránky ${subpage.href} selhal:`,
@@ -321,7 +325,7 @@ export async function captureScreenshots(
   }
 }
 
-export type StoredPage = { label: string; key: string };
+export type StoredPage = { label: string; key: string; url: string };
 
 /**
  * Vyfotí web leadu a uloží snímky pod deterministické klíče.
@@ -348,7 +352,7 @@ export async function captureAndStore(
   for (const [index, page] of capture.extraPages.entries()) {
     const key = salesScreenshotKey(leadId, `page-${index}`);
     await saveRawFile(key, page.data, SCREENSHOT_CONTENT_TYPE);
-    pages.push({ label: page.label, key });
+    pages.push({ label: page.label, key, url: page.url });
   }
 
   return { desktopKey, mobileKey, pages, capture };

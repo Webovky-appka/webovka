@@ -105,9 +105,10 @@ describe("firma bez vlastního webu", () => {
       evidence: [],
       senderName: "Mitsov Web",
     });
-    expect(input).toContain("NEMÁ vlastní web");
+    expect(input).toContain("NENAŠLI");
     expect(input).toContain("postavíme jí první vlastní web");
-    expect(input).toContain("firma nemá vlastní web (ověřeno Scoutem)");
+    expect(input).toContain("nepodařilo se nám najít");
+    expect(input).not.toContain("NEMÁ vlastní web");
   });
 
   it("firma s vlastním webem řádky o platformě nedostane", () => {
@@ -124,6 +125,6 @@ describe("firma bez vlastního webu", () => {
       evidence: [],
       senderName: "Mitsov Web",
     });
-    expect(input).not.toContain("NEMÁ vlastní web");
+    expect(input).not.toContain("NENAŠLI");
   });
 });

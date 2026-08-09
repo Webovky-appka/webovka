@@ -581,6 +581,47 @@ export async function reopenLead(
 }
 
 /**
+ * Vaše hodnocení webu (0–100) — ukládá se k příležitosti a slouží jako
+ * kalibrační vzor: příští audity dostanou poslední ohodnocené snímky
+ * s vaší známkou, aby model srovnal laťku s člověkem, který weby staví.
+ */
+export async function rateWebsite(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const score = Number(formData.get("score"));
+  if (!Number.isInteger(score) || score < 0 || score > 100) {
+    return { error: "Hodnocení je číslo 0 až 100." };
+  }
+
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, websiteScore: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { humanWebScore: score },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "rated",
+      body: `${user.name} ohodnotil web ${score}/100${lead.websiteScore !== null ? ` (model dal ${lead.websiteScore})` : ""}. Použije se pro kalibraci příštích auditů.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  return { success: `Uloženo: ${score}/100. Příští audity se podle vás srovnají.` };
+}
+
+/**
  * Výhra jedním tlačítkem: založí klienta i zakázku ze všeho, co o firmě
  * víme (prospect, dohledané kontakty, doména), a chybějící fakturační
  * údaje (IČO, sídlo) zkusí dohledat AI v rejstřících. Lead končí ve stavu
