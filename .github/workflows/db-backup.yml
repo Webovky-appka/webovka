@@ -1,0 +1,46 @@
+name: Database backup
+
+# Neon free tier drží jen ~1 den point-in-time historie, takže noční
+# pg_dump bokem je jediná pojistka proti smazání či rozbití produkčních
+# dat. Zálohy leží jako GitHub artifacts (privátní repo) s retencí 14 dní.
+#
+# Obnova: stáhnout artifact, rozbalit a
+#   pg_restore --clean --if-exists -d "$CONNECTION_STRING" backup.dump
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC, mimo špičku GitHubu
+  workflow_dispatch:
+
+jobs:
+  dump:
+    if: vars.NEON_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      # pg_dump musí být stejně nový nebo novější než server; klient 18
+      # zvládne i starší verze, default runneru (16) by na novém Neonu spadl.
+      - name: Install PostgreSQL 18 client
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+
+      # Connection string se získává přes API klíč, takže rotace hesla
+      # databáze zálohy nerozbije. --pooled false: pg_dump patří na přímé
+      # připojení, ne přes pgbouncer.
+      - name: Dump database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          CONN=$(npx neonctl@2 connection-string main \
+            --project-id "${{ vars.NEON_PROJECT_ID }}" \
+            --pooled false)
+          pg_dump "$CONN" --format=custom --file=backup.dump
+          ls -lh backup.dump
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup.dump
+          retention-days: 14
+          if-no-files-found: error
