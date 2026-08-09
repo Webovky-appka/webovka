@@ -1,0 +1,22 @@
+name: Neon branch cleanup
+
+# Neonova nativní integrace na Vercelu zakládá pro každý preview deployment
+# databázovou větev `preview/<git-branch>` a sama ji nemaže — na free tieru
+# (limit 10 větví) pak CI padá na „Provisioning integrations failed".
+# Tohle je oficiálně doporučený úklid: smazat větev při zavření PR.
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete-preview-branch:
+    # Bez nastavené repository variable NEON_PROJECT_ID se job přeskočí,
+    # aby nezačal padat dřív, než majitel doplní NEON_API_KEY secret.
+    if: vars.NEON_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: preview/${{ github.event.pull_request.head.ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}
