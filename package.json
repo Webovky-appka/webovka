@@ -23,6 +23,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@sentry/nextjs": "^10.69.0",
     "@sparticuz/chromium": "^149.0.0",
     "@vercel/blob": "^2.6.1",
     "argon2": "^0.45.1",

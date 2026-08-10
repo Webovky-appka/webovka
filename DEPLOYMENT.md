@@ -270,6 +270,24 @@ posílá modelu — audit tak hodnotí skutečně vyrenderovaný web, ne jen HTM
 - Snímky se ukládají do úložiště příloh (lokálně `.uploads/`, v produkci
   Vercel Blob) a vydávají jen přihlášeným přes `/api/sales/screenshots/…`.
 
+## 4h. Sledování chyb v produkci (Sentry)
+
+Neošetřená chyba na serveru i v prohlížeči se hlásí do
+[Sentry](https://sentry.io) — jinak se o pádu dozvíte až od klienta. Bez
+nastaveného DSN je celé sledování vypnuté a aplikace běží jako dřív.
+
+1. Založte účet na sentry.io (free tier stačí) a projekt typu **Next.js**.
+2. Z nastavení projektu zkopírujte **DSN** a vložte na Vercel jako
+   `NEXT_PUBLIC_SENTRY_DSN` (Production; Preview podle uvážení).
+3. Volitelně pro čitelné stack traces (nahrávání source map při buildu):
+   `SENTRY_ORG` (slug organizace), `SENTRY_PROJECT` (slug projektu) a
+   `SENTRY_AUTH_TOKEN` (Settings → Auth Tokens, scope `project:releases`).
+   Bez nich vše funguje, jen jsou stack traces minifikované.
+
+Eventy z prohlížeče jdou přes vlastní doménu (`/monitoring`), takže projdou
+CSP i adblockery. Neposílají se IP adresy, cookies ani session replay —
+jen chyba, stack trace a adresa stránky.
+
 ## 5. Aplikace (Vercel)
 
 1. Naimportujte repozitář `jakubsovadina/web-appka`.
@@ -298,6 +316,10 @@ posílá modelu — audit tak hodnotí skutečně vyrenderovaný web, ne jen HTM
 | `GOOGLE_CLIENT_SECRET`  | ne      | Tajný klíč téhož OAuth klienta                |
 | `GITHUB_TOKEN`          | ne      | Fine-grained PAT pro čtení repozitářů         |
 | `GOOGLE_ACCOUNT_INDEX`  | ne      | Výchozí pořadí účtu pro odkazy v navigaci     |
+| `NEXT_PUBLIC_SENTRY_DSN`| ne      | DSN ze Sentry, zapíná hlášení chyb (4h)       |
+| `SENTRY_ORG`            | ne      | Slug organizace pro upload source map         |
+| `SENTRY_PROJECT`        | ne      | Slug projektu pro upload source map           |
+| `SENTRY_AUTH_TOKEN`     | ne      | Token pro upload source map při buildu        |
 | `STUDIO_NAME`           | ne      | Zhotovitel ve smlouvách, přebíjí Nastavení    |
 | `STUDIO_ICO`            | ne      | IČO do smluv                                  |
 | `STUDIO_DIC`            | ne      | DIČ do smluv, prázdné u neplátce              |
