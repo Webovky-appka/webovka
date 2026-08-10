@@ -351,6 +351,23 @@ bezplatné úrovni je okno krátké, ověřte si aktuální rozsah v jejich nast
 Přílohy v Blob store zálohované nejsou — pokud v nich budou smlouvy, zvažte
 pravidelné stahování kopie.
 
+Navíc běží noční `pg_dump` přes GitHub Actions (`db-backup.yml`, 02:17 UTC):
+záloha se ukládá jako artifact běhu s retencí 14 dní (Actions → Database
+backup → poslední běh → Artifacts). Workflow potřebuje repository variable
+`NEON_PROJECT_ID` a secret `NEON_API_KEY` — stejné, jaké používá úklid
+preview větví. Ruční spuštění: záložka Actions → Database backup → Run
+workflow.
+
+Obnova ze zálohy:
+
+```bash
+unzip db-backup-<run-id>.zip
+pg_restore --clean --if-exists -d "$CONNECTION_STRING" backup.dump
+```
+
+`CONNECTION_STRING` je přímé (ne pooled) připojení k cílové databázi.
+Obnovu si nejdřív vyzkoušejte na prázdné Neon větvi, ne rovnou na produkci.
+
 ## Co se do produkce nesmí dostat
 
 - `.env` v gitu. Proměnné patří do nastavení Vercelu.
