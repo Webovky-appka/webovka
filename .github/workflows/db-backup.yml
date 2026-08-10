@@ -34,7 +34,10 @@ jobs:
           CONN=$(npx neonctl@2 connection-string main \
             --project-id "${{ vars.NEON_PROJECT_ID }}" \
             --pooled false)
-          pg_dump "$CONN" --format=custom --file=backup.dump
+          # Přímo binárka 18 — /usr/bin/pg_dump je wrapper, který na runneru
+          # sáhne po předinstalované 16 a spadne na „server version mismatch".
+          /usr/lib/postgresql/18/bin/pg_dump "$CONN" \
+            --format=custom --file=backup.dump
           ls -lh backup.dump
 
       - name: Upload backup artifact
