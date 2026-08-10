@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { auditLead } from "@/lib/sales/auditor";
 import { researchContact } from "@/lib/sales/contact";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
+import { designLead, MOCKUP_MIN_SCORE } from "@/lib/sales/designer";
 import { draftOutreach } from "@/lib/sales/outreach";
 import { researchCompany } from "@/lib/sales/research";
 import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
@@ -34,6 +35,9 @@ const OUTREACH_PER_TICK = 2;
 /** Company research je taky web search — na tick jeden. */
 const RESEARCH_PER_TICK = 1;
 
+/** Mockup = velké volání + render v prohlížeči, na tick jeden. */
+const DESIGN_PER_TICK = 1;
+
 /** Po kolika neúspěších se lead přestane zkoušet a přeskočí se. */
 const MAX_ATTEMPTS = 2;
 
@@ -59,6 +63,8 @@ export type RunStats = {
   contactAttempts: Record<string, number>;
   researched: number;
   researchAttempts: Record<string, number>;
+  designed: number;
+  designAttempts: Record<string, number>;
   drafts: number;
   outreachAttempts: Record<string, number>;
   errors: string[];
@@ -81,6 +87,8 @@ const EMPTY_STATS: RunStats = {
   contactAttempts: {},
   researched: 0,
   researchAttempts: {},
+  designed: 0,
+  designAttempts: {},
   drafts: 0,
   outreachAttempts: {},
   errors: [],
@@ -175,24 +183,73 @@ async function pendingResearchIds(
     .filter((id) => (stats.researchAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
 
+/** Lead ve fázi RESEARCHING s poli, podle kterých se řadí do front. */
+type StageLead = {
+  id: string;
+  researchAt: Date | null;
+  score: number | null;
+  mockupVariant: string | null;
+  mockupKey: string | null;
+};
+
+function stageLeads(campaignId: string): Promise<StageLead[]> {
+  return prisma.salesLead.findMany({
+    where: { campaignId, status: "RESEARCHING" },
+    select: {
+      id: true,
+      researchAt: true,
+      score: true,
+      mockupVariant: true,
+      mockupKey: true,
+    },
+  });
+}
+
+/** Research hotový, nebo vyčerpal pokusy — dál se na něj nečeká. */
+function researchSettled(stats: RunStats, lead: StageLead): boolean {
+  return (
+    lead.researchAt !== null ||
+    (stats.researchAttempts[lead.id] ?? 0) >= MAX_ATTEMPTS
+  );
+}
+
 /**
- * Leady čekající na návrh e-mailu: research hotový, nebo vyčerpal pokusy —
- * e-mail se píše i bez háčků, jen ne dřív, než research dostal šanci.
+ * Čeká lead na Designera? Jen nejlepší příležitosti (skóre 75+): bez
+ * vylosované varianty, nebo s variantou „mockup" bez hotového snímku.
+ * Jako research je to bonus — po vyčerpání pokusů jde lead dál bez ukázky.
+ */
+function designWaiting(stats: RunStats, lead: StageLead): boolean {
+  return (
+    researchSettled(stats, lead) &&
+    (lead.score ?? 0) >= MOCKUP_MIN_SCORE &&
+    (lead.mockupVariant === null ||
+      (lead.mockupVariant === "mockup" && lead.mockupKey === null)) &&
+    (stats.designAttempts[lead.id] ?? 0) < MAX_ATTEMPTS
+  );
+}
+
+async function pendingDesignIds(
+  stats: RunStats,
+  campaignId: string,
+): Promise<string[]> {
+  const waiting = await stageLeads(campaignId);
+  return waiting.filter((lead) => designWaiting(stats, lead)).map((l) => l.id);
+}
+
+/**
+ * Leady čekající na návrh e-mailu: research i Designer hotové nebo
+ * s vyčerpanými pokusy — e-mail se píše i bez háčků a bez ukázky,
+ * jen ne dřív, než obě fáze dostaly šanci.
  */
 async function pendingOutreachIds(
   stats: RunStats,
   campaignId: string,
 ): Promise<string[]> {
-  const waiting = await prisma.salesLead.findMany({
-    where: { campaignId, status: "RESEARCHING" },
-    select: { id: true, researchAt: true },
-  });
+  const waiting = await stageLeads(campaignId);
 
   return waiting
     .filter(
-      (lead) =>
-        lead.researchAt !== null ||
-        (stats.researchAttempts[lead.id] ?? 0) >= MAX_ATTEMPTS,
+      (lead) => researchSettled(stats, lead) && !designWaiting(stats, lead),
     )
     .map((lead) => lead.id)
     .filter((id) => (stats.outreachAttempts[id] ?? 0) < MAX_ATTEMPTS);
@@ -450,7 +507,47 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
     };
   }
 
-  // Krok 6: návrhy e-mailů. Lead končí ve stavu READY_FOR_REVIEW —
+  // Krok 6: Designer — koncept homepage u nejlepších příležitostí
+  // (experiment mockup vs. kontrola). Selhání e-mail neblokuje.
+  const pendingDesign = await pendingDesignIds(stats, run.campaignId);
+  for (const leadId of pendingDesign.slice(0, DESIGN_PER_TICK)) {
+    stats.designAttempts[leadId] = (stats.designAttempts[leadId] ?? 0) + 1;
+
+    const outcome = await designLead({
+      leadId,
+      campaign: run.campaign,
+      runId: run.id,
+    });
+
+    if (!outcome.ok) {
+      stats.errors.push(`Designer ${leadId}: ${outcome.error}`);
+      log(stats, `Koncept homepage selhal: ${outcome.error}`);
+      continue;
+    }
+
+    if (outcome.generated) {
+      stats.designed += 1;
+      log(stats, "Koncept nové homepage vygenerován a uložen.");
+    } else if (outcome.variant === "none") {
+      log(
+        stats,
+        `Skóre ${MOCKUP_MIN_SCORE}+, ale los určil kontrolní skupinu bez konceptu.`,
+      );
+    }
+  }
+
+  const remainingDesign = await pendingDesignIds(stats, run.campaignId);
+  if (remainingDesign.length > 0) {
+    await saveRun(runId, stats);
+    return {
+      id: run.id,
+      status: "RUNNING",
+      stats,
+      pending: remainingDesign.length,
+    };
+  }
+
+  // Krok 7: návrhy e-mailů. Lead končí ve stavu READY_FOR_REVIEW —
   // odeslání je vždycky na člověku.
   const pendingOutreach = await pendingOutreachIds(stats, run.campaignId);
   for (const leadId of pendingOutreach.slice(0, OUTREACH_PER_TICK)) {
@@ -480,12 +577,14 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
   const reopenedAudits = await pendingAuditIds(stats, run.campaignId);
   const reopenedContacts = await pendingContactIds(stats, run.campaignId);
   const reopenedResearch = await pendingResearchIds(stats, run.campaignId);
+  const reopenedDesign = await pendingDesignIds(stats, run.campaignId);
 
   if (
     remainingOutreach.length === 0 &&
     reopenedAudits.length === 0 &&
     reopenedContacts.length === 0 &&
-    reopenedResearch.length === 0
+    reopenedResearch.length === 0 &&
+    reopenedDesign.length === 0
   ) {
     log(
       stats,

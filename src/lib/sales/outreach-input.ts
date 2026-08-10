@@ -41,6 +41,8 @@ export type OutreachFacts = {
   recommendation: string | null;
   evidence: EvidenceItem[];
   researchHooks: ResearchHook[];
+  /** Ke zprávě bude přiložený JPEG koncept nové homepage od Designera. */
+  hasMockup: boolean;
   senderName: string;
 };
 
@@ -116,6 +118,14 @@ export function buildOutreachInput(facts: OutreachFacts): string {
       ? `Naše doporučení z auditu: ${facts.recommendation}`
       : "Bez doporučení.",
     "",
+    ...(facts.hasMockup
+      ? [
+          "K e-mailu přiložíme obrázek s konceptem, jak by jejich nová homepage mohla vypadat.",
+          "Zmiň ho přesně jednou větou (např. „do přílohy posílám rychlý koncept, jak by váš web mohl",
+          "vypadat — ber ho prosím jen jako první nástřel“) a zvol strategii visual.",
+          "",
+        ]
+      : []),
     // Když odesílá „Mitsov Web" (fallback bez jména), nesmí vzniknout
     // zdvojení „Mitsov Web, Mitsov Web" v podpisu.
     facts.senderName === "Mitsov Web"

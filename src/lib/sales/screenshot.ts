@@ -93,6 +93,10 @@ type Page = {
     url: string,
     options: { waitUntil: "networkidle2"; timeout: number },
   ): Promise<unknown>;
+  setContent(
+    html: string,
+    options: { waitUntil: "networkidle2"; timeout: number },
+  ): Promise<void>;
   evaluate<T>(fn: string): Promise<T>;
   screenshot(options: { type: "jpeg"; quality: number }): Promise<Uint8Array>;
   close(): Promise<void>;
@@ -317,6 +321,35 @@ export async function captureScreenshots(
     // na Vercelu je to jediná stopa (v aktivitě je pak jen screenshots: false).
     console.error(
       `[sales] Screenshot ${url} selhal:`,
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  } finally {
+    await browser?.close().catch(() => {});
+  }
+}
+
+/**
+ * Vyrenderuje HTML koncept Designera do JPEG snímku první obrazovky.
+ * Stejný prohlížeč jako screenshoty; chyba vrací null a nikdy neshodí běh.
+ */
+export async function renderHtmlScreenshot(html: string): Promise<Buffer | null> {
+  let browser: Browser | null = null;
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    await page.setViewport(SCREENSHOT_VIEWPORTS.desktop);
+    await page.setContent(html, {
+      waitUntil: "networkidle2",
+      timeout: PAGE_TIMEOUT_MS,
+    });
+    await sleep(SETTLE_MS);
+    return Buffer.from(
+      await page.screenshot({ type: "jpeg", quality: JPEG_QUALITY }),
+    );
+  } catch (error) {
+    console.error(
+      "[sales] Render mockupu selhal:",
       error instanceof Error ? error.message : error,
     );
     return null;

@@ -28,6 +28,7 @@ function facts(overrides: Partial<OutreachFacts> = {}): OutreachFacts {
       { claim: "Majitel plánuje expanzi", kind: "UNKNOWN", source: "" },
     ],
     researchHooks: [],
+    hasMockup: false,
     senderName: "Daniel Mitka",
     ...overrides,
   };
@@ -105,6 +106,7 @@ describe("firma bez vlastního webu", () => {
       recommendation: null,
       evidence: [],
       researchHooks: [],
+      hasMockup: false,
       senderName: "Mitsov Web",
     });
     expect(input).toContain("NENAŠLI");
@@ -126,9 +128,25 @@ describe("firma bez vlastního webu", () => {
       recommendation: null,
       evidence: [],
       researchHooks: [],
+      hasMockup: false,
       senderName: "Mitsov Web",
     });
     expect(input).not.toContain("NENAŠLI");
+  });
+});
+
+describe("koncept homepage v podkladech", () => {
+  it("s mockupem podklady chtějí jednu větu o příloze a strategii visual", () => {
+    const input = buildOutreachInput(facts({ hasMockup: true }));
+
+    expect(input).toContain("přiložíme obrázek s konceptem");
+    expect(input).toContain("strategii visual");
+  });
+
+  it("bez mockupu se o příloze nemluví", () => {
+    expect(buildOutreachInput(facts())).not.toContain(
+      "přiložíme obrázek s konceptem",
+    );
   });
 });
 

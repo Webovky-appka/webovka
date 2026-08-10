@@ -16,7 +16,12 @@ export async function GET(
   }
 
   const { leadId, kind } = await context.params;
-  if (kind !== "desktop" && kind !== "mobile" && !/^page-[0-9]$/.test(kind)) {
+  if (
+    kind !== "desktop" &&
+    kind !== "mobile" &&
+    kind !== "mockup" &&
+    !/^page-[0-9]$/.test(kind)
+  ) {
     return new Response("Nenalezeno", { status: 404 });
   }
 
@@ -26,6 +31,7 @@ export async function GET(
       screenshotDesktopKey: true,
       screenshotMobileKey: true,
       screenshotPages: true,
+      mockupKey: true,
     },
   });
   const pages = Array.isArray(lead?.screenshotPages)
@@ -36,7 +42,9 @@ export async function GET(
       ? lead?.screenshotDesktopKey
       : kind === "mobile"
         ? lead?.screenshotMobileKey
-        : (pages[Number(kind.slice("page-".length))]?.key ?? null);
+        : kind === "mockup"
+          ? lead?.mockupKey
+          : (pages[Number(kind.slice("page-".length))]?.key ?? null);
   if (!storageKey) return new Response("Nenalezeno", { status: 404 });
 
   let bytes: Buffer;
