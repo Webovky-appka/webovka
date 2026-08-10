@@ -55,4 +55,10 @@ describe("ochranná pravidla v promptech", () => {
     expect(DEFAULT_PROMPTS.auditor).toContain("Netvrď, že něco chybí");
     expect(DEFAULT_PROMPTS.auditor).toContain("Dobrý web poznej");
   });
+
+  it("research nevymýšlí, vyžaduje zdroj a hledá čerstvé", () => {
+    expect(DEFAULT_PROMPTS.research).toContain("Nic si nedomýšlej");
+    expect(DEFAULT_PROMPTS.research).toContain("Bez zdroje háček neukládej");
+    expect(DEFAULT_PROMPTS.research).toContain("ČERSTVÉ");
+  });
 });

@@ -11,6 +11,7 @@ import {
   OUTREACH_STRATEGIES,
 } from "@/lib/sales/outreach-input";
 import { getActivePrompt } from "@/lib/sales/prompts";
+import { parseResearchHooks } from "@/lib/sales/research-hooks";
 
 /**
  * Outreach (sekce 13 specifikace): z leadu s auditem a kontaktem složí návrh
@@ -100,6 +101,7 @@ export async function draftOutreach(options: {
     problems: findings.problems ?? [],
     recommendation: findings.recommendation ?? null,
     evidence: findings.evidence ?? [],
+    researchHooks: parseResearchHooks(lead.research),
     senderName,
   });
 

@@ -1,5 +1,9 @@
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { usableInOutreach, type EvidenceItem } from "@/lib/sales/evidence";
+import {
+  RESEARCH_CATEGORY_LABELS,
+  type ResearchHook,
+} from "@/lib/sales/research-hooks";
 
 /**
  * Sestavení podkladů pro Outreach — čistý modul, aby šlo testovat, že se
@@ -36,12 +40,19 @@ export type OutreachFacts = {
   problems: { title: string; explanation: string; severity: string }[];
   recommendation: string | null;
   evidence: EvidenceItem[];
+  researchHooks: ResearchHook[];
   senderName: string;
 };
 
 export function buildOutreachInput(facts: OutreachFacts): string {
   const usable = usableInOutreach(facts.evidence);
   const noOwnWebsite = !facts.domain || isSharedPlatformDomain(facts.domain);
+
+  // Do e-mailu smí jen pozorované a odvozené háčky — dojem modelu
+  // („působí zavedeně“) není fakt o firmě, stejná hranice jako u auditu.
+  const usableHooks = facts.researchHooks
+    .filter((hook) => hook.kind === "OBSERVED" || hook.kind === "DERIVED")
+    .slice(0, 5);
 
   // Nejvýš dva nejvážnější problémy — e-mail má zmínit jedno až dvě
   // pozorování, ne vysypat celý audit (sekce 13.1).
@@ -72,6 +83,16 @@ export function buildOutreachInput(facts: OutreachFacts): string {
           "vlastní rezervace/objednávky. NEpiš o „vylepšení webu“ a NIKDY netvrď",
           "absolutně „nemáte web“ — formuluj jako „nepodařilo se nám najít váš",
           "web“. Když se mýlíme, zdvořilá formulace nás zachrání.",
+          "",
+        ]
+      : []),
+    ...(usableHooks.length > 0
+      ? [
+          "Čerstvé háčky o firmě z researche (na úvod „proč píšu právě vám“ vyber NEJVÝŠ JEDEN, nejlépe nejčerstvější):",
+          ...usableHooks.map(
+            (hook) =>
+              `- [${RESEARCH_CATEGORY_LABELS[hook.category]}] ${hook.claim} [${hook.source}]`,
+          ),
           "",
         ]
       : []),
