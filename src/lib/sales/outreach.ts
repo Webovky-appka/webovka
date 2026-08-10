@@ -102,6 +102,7 @@ export async function draftOutreach(options: {
     recommendation: findings.recommendation ?? null,
     evidence: findings.evidence ?? [],
     researchHooks: parseResearchHooks(lead.research),
+    hasMockup: lead.mockupKey !== null,
     senderName,
   });
 

@@ -18,7 +18,8 @@ describe("registr agentů", () => {
 
   it("pozná neznámého agenta", () => {
     expect(isSalesAgent("scout")).toBe(true);
-    expect(isSalesAgent("designer")).toBe(false);
+    expect(isSalesAgent("designer")).toBe(true);
+    expect(isSalesAgent("coach")).toBe(false);
     expect(isSalesAgent(undefined)).toBe(false);
   });
 });
@@ -60,5 +61,11 @@ describe("ochranná pravidla v promptech", () => {
     expect(DEFAULT_PROMPTS.research).toContain("Nic si nedomýšlej");
     expect(DEFAULT_PROMPTS.research).toContain("Bez zdroje háček neukládej");
     expect(DEFAULT_PROMPTS.research).toContain("ČERSTVÉ");
+  });
+
+  it("designer zakazuje externí zdroje a vymyšlená fakta", () => {
+    expect(DEFAULT_PROMPTS.designer).toContain("ŽÁDNÉ externí zdroje");
+    expect(DEFAULT_PROMPTS.designer).toContain("NEVYMÝŠLEJ");
+    expect(DEFAULT_PROMPTS.designer).toContain("1440×900");
   });
 });

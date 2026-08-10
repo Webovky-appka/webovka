@@ -347,6 +347,41 @@ export default async function LeadPage(props: {
         </section>
       ) : null}
 
+      {lead.mockupKey ? (
+        <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Koncept nové homepage
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Vygenerovaný návrh do přílohy e-mailu — před odesláním ho
+                zkontrolujte, je to první nástřel.
+              </p>
+            </div>
+            <a
+              href={`/api/sales/screenshots/${lead.id}/mockup`}
+              download={`koncept-${(lead.prospect.domain ?? lead.prospect.name).replace(/[^a-z0-9.-]+/gi, "-")}.jpg`}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+            >
+              Stáhnout přílohu
+            </a>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/api/sales/screenshots/${lead.id}/mockup`}
+            alt={`Koncept nové homepage pro ${lead.prospect.name}`}
+            className="w-full rounded-lg border border-slate-200"
+          />
+        </section>
+      ) : lead.mockupVariant === "none" ? (
+        <p className="rounded-xl border border-dashed border-slate-200 px-5 py-3 text-xs text-slate-500">
+          Experiment Designera: tahle příležitost je v kontrolní skupině —
+          e-mail jde záměrně bez konceptu homepage, ať jde změřit, jestli
+          ukázka zvedá odpovědi.
+        </p>
+      ) : null}
+
       {draft && draft.status === "DRAFT" ? (
         <ReviewPanel
           draft={{

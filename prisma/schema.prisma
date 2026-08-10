@@ -515,6 +515,12 @@ model SalesLead {
   research             Json?
   /// Kdy research proběhl. NULL = fronta pro fázi research v běhu kampaně.
   researchAt           DateTime?
+  /// Experiment Designera u skóre 75+: "mockup" dostane koncept homepage
+  /// do přílohy, "none" je kontrolní skupina. Losuje se jednou, nemění se.
+  mockupVariant        String?
+  /// Klíč JPEG konceptu v úložišti; NULL u varianty "none" a pod prahem.
+  mockupKey            String?
+  mockupAt             DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
