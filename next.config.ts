@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -36,4 +37,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  /**
+   * Klientské eventy jdou na vlastní doménu místo *.ingest.sentry.io —
+   * jinak by je zablokovalo naše CSP (connect-src 'self') a adblockery.
+   */
+  tunnelRoute: "/monitoring",
+
+  // Bez auth tokenu (lokálně, CI) se source mapy nenahrávají a build
+  // o tom nemá vypisovat varování; čitelné stack traces řeší až Vercel.
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  silent: true,
+});
