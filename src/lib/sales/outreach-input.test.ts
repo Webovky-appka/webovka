@@ -27,6 +27,7 @@ function facts(overrides: Partial<OutreachFacts> = {}): OutreachFacts {
       { claim: "Vizuál působí lacině", kind: "AI_JUDGMENT", source: "dojem modelu" },
       { claim: "Majitel plánuje expanzi", kind: "UNKNOWN", source: "" },
     ],
+    researchHooks: [],
     senderName: "Daniel Mitka",
     ...overrides,
   };
@@ -103,6 +104,7 @@ describe("firma bez vlastního webu", () => {
       problems: [],
       recommendation: null,
       evidence: [],
+      researchHooks: [],
       senderName: "Mitsov Web",
     });
     expect(input).toContain("NENAŠLI");
@@ -123,8 +125,55 @@ describe("firma bez vlastního webu", () => {
       problems: [],
       recommendation: null,
       evidence: [],
+      researchHooks: [],
       senderName: "Mitsov Web",
     });
     expect(input).not.toContain("NENAŠLI");
+  });
+});
+
+describe("háčky z company researche", () => {
+  it("použitelné háčky projdou i s kategorií, dojem modelu ne", () => {
+    const input = buildOutreachInput(
+      facts({
+        researchHooks: [
+          {
+            claim: "Zákazník v květnové recenzi chválí novou zahrádku",
+            kind: "OBSERVED",
+            source: "mapy.google.com",
+            category: "recenze",
+          },
+          {
+            claim: "Firma působí zavedeně",
+            kind: "AI_JUDGMENT",
+            source: "dojem modelu",
+            category: "jine",
+          },
+        ],
+      }),
+    );
+
+    expect(input).toContain("Čerstvé háčky o firmě");
+    expect(input).toContain("[Recenze] Zákazník v květnové recenzi");
+    expect(input).toContain("NEJVÝŠ JEDEN");
+    expect(input).not.toContain("Firma působí zavedeně");
+  });
+
+  it("bez použitelných háčků se sekce vůbec neobjeví", () => {
+    const onlyJudgment = buildOutreachInput(
+      facts({
+        researchHooks: [
+          {
+            claim: "Vypadá to na rodinný podnik",
+            kind: "AI_JUDGMENT",
+            source: "dojem",
+            category: "jine",
+          },
+        ],
+      }),
+    );
+
+    expect(onlyJudgment).not.toContain("Čerstvé háčky o firmě");
+    expect(buildOutreachInput(facts())).not.toContain("Čerstvé háčky o firmě");
   });
 });

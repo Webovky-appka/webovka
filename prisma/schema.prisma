@@ -510,6 +510,11 @@ model SalesLead {
   /// audity. Model má laťku jinde než člověk, který weby staví.
   humanWebScore        Int?
   humanWebNote         String?
+  /// Company research: { hooks: [{claim, kind, source, category}], summary }.
+  /// Čerstvé háčky do úvodu e-mailu — recenze, novinky, sezóna, nábory.
+  research             Json?
+  /// Kdy research proběhl. NULL = fronta pro fázi research v běhu kampaně.
+  researchAt           DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

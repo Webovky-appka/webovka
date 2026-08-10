@@ -16,6 +16,10 @@ import {
   isEvidenceKind,
   type EvidenceItem,
 } from "@/lib/sales/evidence";
+import {
+  parseResearchHooks,
+  RESEARCH_CATEGORY_LABELS,
+} from "@/lib/sales/research-hooks";
 import { isVisualBreakdown, VISUAL_DIMENSIONS } from "@/lib/sales/visual";
 
 export const metadata = {
@@ -99,6 +103,7 @@ export default async function LeadPage(props: {
     isEvidenceKind(item.kind),
   );
   const visual = isVisualBreakdown(findings.visual) ? findings.visual : null;
+  const researchHooks = parseResearchHooks(lead.research);
   const screenshotPages = (
     Array.isArray(lead.screenshotPages) ? lead.screenshotPages : []
   ).filter(
@@ -195,6 +200,40 @@ export default async function LeadPage(props: {
           </div>
         </dl>
       </section>
+
+      {researchHooks.length > 0 ? (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">
+              Co jsme o firmě zjistili
+            </h2>
+            {lead.researchAt ? (
+              <p className="text-xs text-slate-500">
+                {formatDateTime(lead.researchAt)}
+              </p>
+            ) : null}
+          </div>
+          <ul className="mt-3 space-y-2">
+            {researchHooks.map((hook, index) => (
+              <li key={index} className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5 shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                  {RESEARCH_CATEGORY_LABELS[hook.category]}
+                </span>
+                <span className="text-slate-700">
+                  {hook.claim}{" "}
+                  <span
+                    className="text-xs text-slate-400"
+                    title={EVIDENCE_LABELS[hook.kind].hint}
+                  >
+                    {EVIDENCE_LABELS[hook.kind].label.toLowerCase()} ·{" "}
+                    {hook.source}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {lead.status === "REJECTED" || lead.status === "LOST" ? (
         <section className="space-y-3 rounded-xl border border-red-200 bg-red-50/50 p-5">

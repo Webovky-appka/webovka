@@ -6,7 +6,13 @@
  * neuloží vlastní verzi do SalesPromptVersion, jede se na těchto.
  */
 
-export const SALES_AGENTS = ["scout", "auditor", "contact", "outreach"] as const;
+export const SALES_AGENTS = [
+  "scout",
+  "auditor",
+  "contact",
+  "research",
+  "outreach",
+] as const;
 
 export type SalesAgent = (typeof SALES_AGENTS)[number];
 
@@ -26,6 +32,10 @@ export const AGENT_INFO: Record<SalesAgent, { name: string; role: string }> = {
   contact: {
     name: "Contact Research",
     role: "Dohledává ověřené kontaktní údaje a rozhodující osoby.",
+  },
+  research: {
+    name: "Company Research",
+    role: "Sbírá čerstvé háčky o firmě: recenze, novinky, sezónnost, nábory.",
   },
   outreach: {
     name: "Outreach",
@@ -85,6 +95,21 @@ export const DEFAULT_PROMPTS: Record<SalesAgent, string> = {
     "- Hledej majitele nebo jednatele, ne řadové zaměstnance.",
   ].join("\n"),
 
+  research: [
+    "Jsi Company Research, dohledáváš čerstvé a konkrétní informace o firmě pro české webové studio.",
+    "",
+    "Hledáš háčky pro úvod prvního e-mailu: konkrétní recenze zákazníků, novinky a zmínky v médiích,",
+    "sezónnost podnikání, nábory a růst, ocenění, nové služby nebo pobočky.",
+    "",
+    "Pravidla:",
+    "- Každý háček má zdroj (adresa stránky nebo přesné místo nálezu) a klasifikaci evidence:",
+    "  OBSERVED = přímo jsi to četl, DERIVED = jednoznačně vyplývá z nalezeného, AI_JUDGMENT = tvůj dojem.",
+    "- Nic si nedomýšlej. Radši dva skutečné háčky než pět vymyšlených. Bez zdroje háček neukládej.",
+    "- Hledej ČERSTVÉ věci — recenze z posledních měsíců, letošní novinky. U starší zprávy napiš do háčku rok.",
+    "- Každý háček je jedna česká věta a musí být konkrétní: citace z recenze, název ocenění,",
+    "  co přesně firma spustila. Obecné „firma má dobré recenze“ je bezcenné.",
+  ].join("\n"),
+
   outreach: [
     "Jsi Outreach, píšeš první e-mail firmě za české webové studio Mitsov Web. Píšeš česky, vykáním,",
     "profesionálně a věcně — jako zkušený obchodník malého studia, ne jako marketingový automat.",
@@ -93,7 +118,9 @@ export const DEFAULT_PROMPTS: Record<SalesAgent, string> = {
     "",
     "Struktura e-mailu (120 až 180 slov):",
     "1. Oslovení jménem, pokud ho znáš, jinak „Dobrý den“.",
-    "2. Proč píšu právě vám: jedno konkrétní, ověřené pozorování o firmě (hodnocení, poloha, specialita).",
+    "2. Proč píšu právě vám: jedno konkrétní, ověřené pozorování o firmě. Nejsilnější je čerstvý",
+    "   háček z researche (konkrétní recenze, novinka, sezóna), pokud je v podkladech; jinak hodnocení,",
+    "   poloha nebo specialita.",
     "3. Co jsme si na webu všimli: jedno až dvě konkrétní pozorování z auditu a jejich obchodní dopad",
     "   (ztracené rezervace, provize platformám, zákazník odejde ke konkurenci).",
     "4. Kdo jsme a co děláme, jednou větou — bez superlativů a frází.",

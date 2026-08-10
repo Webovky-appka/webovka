@@ -7,6 +7,7 @@ import { auditLead } from "@/lib/sales/auditor";
 import { researchContact } from "@/lib/sales/contact";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { draftOutreach } from "@/lib/sales/outreach";
+import { researchCompany } from "@/lib/sales/research";
 import { discoverCandidates, qualifyLead } from "@/lib/sales/scout";
 
 /**
@@ -29,6 +30,9 @@ const AUDIT_PER_TICK = 1;
 /** Contact research volá web search, na tick jeden. Návrhy e-mailů po dvou. */
 const CONTACT_PER_TICK = 1;
 const OUTREACH_PER_TICK = 2;
+
+/** Company research je taky web search — na tick jeden. */
+const RESEARCH_PER_TICK = 1;
 
 /** Po kolika neúspěších se lead přestane zkoušet a přeskočí se. */
 const MAX_ATTEMPTS = 2;
@@ -53,6 +57,8 @@ export type RunStats = {
   auditAttempts: Record<string, number>;
   contacts: number;
   contactAttempts: Record<string, number>;
+  researched: number;
+  researchAttempts: Record<string, number>;
   drafts: number;
   outreachAttempts: Record<string, number>;
   errors: string[];
@@ -73,6 +79,8 @@ const EMPTY_STATS: RunStats = {
   auditAttempts: {},
   contacts: 0,
   contactAttempts: {},
+  researched: 0,
+  researchAttempts: {},
   drafts: 0,
   outreachAttempts: {},
   errors: [],
@@ -149,17 +157,43 @@ async function pendingContactIds(
     .filter((id) => (stats.contactAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
 
-/** Leady po contact researchi čekající na návrh e-mailu. */
+/**
+ * Leady po kontaktech čekající na company research. Research je bonus,
+ * ne brána: po vyčerpání pokusů lead z fronty zmizí a jde na e-mail bez háčků.
+ */
+async function pendingResearchIds(
+  stats: RunStats,
+  campaignId: string,
+): Promise<string[]> {
+  const waiting = await prisma.salesLead.findMany({
+    where: { campaignId, status: "RESEARCHING", researchAt: null },
+    select: { id: true },
+  });
+
+  return waiting
+    .map((lead) => lead.id)
+    .filter((id) => (stats.researchAttempts[id] ?? 0) < MAX_ATTEMPTS);
+}
+
+/**
+ * Leady čekající na návrh e-mailu: research hotový, nebo vyčerpal pokusy —
+ * e-mail se píše i bez háčků, jen ne dřív, než research dostal šanci.
+ */
 async function pendingOutreachIds(
   stats: RunStats,
   campaignId: string,
 ): Promise<string[]> {
   const waiting = await prisma.salesLead.findMany({
     where: { campaignId, status: "RESEARCHING" },
-    select: { id: true },
+    select: { id: true, researchAt: true },
   });
 
   return waiting
+    .filter(
+      (lead) =>
+        lead.researchAt !== null ||
+        (stats.researchAttempts[lead.id] ?? 0) >= MAX_ATTEMPTS,
+    )
     .map((lead) => lead.id)
     .filter((id) => (stats.outreachAttempts[id] ?? 0) < MAX_ATTEMPTS);
 }
@@ -378,7 +412,45 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
     };
   }
 
-  // Krok 5: návrhy e-mailů. Lead končí ve stavu READY_FOR_REVIEW —
+  // Krok 5: company research — čerstvé háčky do úvodu e-mailu. Selhání
+  // e-mail neblokuje, po vyčerpání pokusů jde lead dál bez háčků.
+  const pendingResearch = await pendingResearchIds(stats, run.campaignId);
+  for (const leadId of pendingResearch.slice(0, RESEARCH_PER_TICK)) {
+    stats.researchAttempts[leadId] = (stats.researchAttempts[leadId] ?? 0) + 1;
+
+    const outcome = await researchCompany({
+      leadId,
+      campaign: run.campaign,
+      runId: run.id,
+    });
+
+    if (!outcome.ok) {
+      stats.errors.push(`Research ${leadId}: ${outcome.error}`);
+      log(stats, `Company research selhal: ${outcome.error}`);
+      continue;
+    }
+
+    stats.researched += 1;
+    log(
+      stats,
+      outcome.hooks === 0
+        ? "Company research bez háčků — e-mail se opře o audit."
+        : `Company research našel ${outcome.hooks} háčků.`,
+    );
+  }
+
+  const remainingResearch = await pendingResearchIds(stats, run.campaignId);
+  if (remainingResearch.length > 0) {
+    await saveRun(runId, stats);
+    return {
+      id: run.id,
+      status: "RUNNING",
+      stats,
+      pending: remainingResearch.length,
+    };
+  }
+
+  // Krok 6: návrhy e-mailů. Lead končí ve stavu READY_FOR_REVIEW —
   // odeslání je vždycky na člověku.
   const pendingOutreach = await pendingOutreachIds(stats, run.campaignId);
   for (const leadId of pendingOutreach.slice(0, OUTREACH_PER_TICK)) {
@@ -407,11 +479,13 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
   // je prázdno všude.
   const reopenedAudits = await pendingAuditIds(stats, run.campaignId);
   const reopenedContacts = await pendingContactIds(stats, run.campaignId);
+  const reopenedResearch = await pendingResearchIds(stats, run.campaignId);
 
   if (
     remainingOutreach.length === 0 &&
     reopenedAudits.length === 0 &&
-    reopenedContacts.length === 0
+    reopenedContacts.length === 0 &&
+    reopenedResearch.length === 0
   ) {
     log(
       stats,
