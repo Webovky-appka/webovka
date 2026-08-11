@@ -843,6 +843,101 @@ export async function rateWebsite(
   };
 }
 
+const SampleSchema = z.object({
+  label: z.string().trim().min(1, "Pojmenujte vzor.").max(80),
+  subject: z
+    .string()
+    .trim()
+    .max(150, "Předmět je příliš dlouhý.")
+    .transform((value) => (value === "" ? null : value)),
+  body: z
+    .string()
+    .trim()
+    .min(80, "Vzor je příliš krátký — vložte celý e-mail, ne jen věty.")
+    .max(4000, "Vzor je příliš dlouhý."),
+  note: z
+    .string()
+    .trim()
+    .max(300, "Poznámka je příliš dlouhá.")
+    .transform((value) => (value === "" ? null : value)),
+});
+
+function readSample(formData: FormData) {
+  return {
+    label: formData.get("label"),
+    subject: formData.get("subject") ?? "",
+    body: formData.get("body"),
+    note: formData.get("note") ?? "",
+  };
+}
+
+/**
+ * Vzorový e-mail: takhle má Outreach psát. K modelu jde jako ukázka tónu
+ * a stavby — fakta si z něj brát nesmí, vzor je o jiné firmě.
+ */
+export async function saveEmailSample(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const parsed = SampleSchema.safeParse(readSample(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Neplatný vstup." };
+  }
+
+  const sampleId = String(formData.get("sampleId") ?? "");
+  if (sampleId !== "") {
+    await prisma.salesEmailSample.update({
+      where: { id: sampleId },
+      data: parsed.data,
+    });
+    return { success: "Vzor uložen. Použije se u příštího návrhu e-mailu." };
+  }
+
+  await prisma.salesEmailSample.create({
+    data: { ...parsed.data, createdById: user.id },
+  });
+  revalidatePath("/settings");
+  return { success: "Vzor přidán. Použije se u příštího návrhu e-mailu." };
+}
+
+/** Vypnutý vzor zůstává uložený, jen k modelu nejde. */
+export async function toggleEmailSample(formData: FormData) {
+  await requireUser();
+
+  const sampleId = String(formData.get("sampleId") ?? "");
+  const sample = await prisma.salesEmailSample.findUnique({
+    where: { id: sampleId },
+    select: { active: true },
+  });
+  if (!sample) return;
+
+  await prisma.salesEmailSample.update({
+    where: { id: sampleId },
+    data: { active: !sample.active },
+  });
+  revalidatePath("/settings");
+}
+
+export async function deleteEmailSample(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  await requireUser();
+
+  const sampleId = String(formData.get("sampleId") ?? "");
+  const sample = await prisma.salesEmailSample.findUnique({
+    where: { id: sampleId },
+    select: { id: true },
+  });
+  if (!sample) return { error: "Vzor nenalezen." };
+
+  await prisma.salesEmailSample.delete({ where: { id: sampleId } });
+  revalidatePath("/settings");
+  return { success: "Vzor smazán." };
+}
+
 /** Odebrání hodnocení ze sbírky vzorů — omyl nemá kalibrovat další audity. */
 export async function clearWebsiteRating(
   _prevState: SalesFormState,

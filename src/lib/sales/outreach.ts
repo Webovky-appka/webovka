@@ -4,6 +4,11 @@ import type { SalesCampaign } from "@prisma/client";
 import * as z from "zod";
 
 import { prisma } from "@/lib/prisma";
+import {
+  buildSampleBlock,
+  MAX_SAMPLES,
+  type EmailSample,
+} from "@/lib/sales/email-samples";
 import type { EvidenceItem } from "@/lib/sales/evidence";
 import { callAgentModel } from "@/lib/sales/model";
 import {
@@ -55,6 +60,16 @@ export type OutreachOutcome =
   | { ok: true; strategy: string }
   | { ok: false; error: string };
 
+/** Zapnuté vzory z Nastavení, nejnovější první. */
+async function activeSamples(): Promise<EmailSample[]> {
+  return prisma.salesEmailSample.findMany({
+    where: { active: true },
+    orderBy: { updatedAt: "desc" },
+    take: MAX_SAMPLES,
+    select: { label: true, subject: true, body: true, note: true },
+  });
+}
+
 export async function draftOutreach(options: {
   leadId: string;
   campaign: SalesCampaign;
@@ -103,6 +118,7 @@ export async function draftOutreach(options: {
     evidence: findings.evidence ?? [],
     researchHooks: parseResearchHooks(lead.research),
     hasMockup: lead.mockupKey !== null,
+    samples: await activeSamples(),
     senderName,
   });
 
@@ -212,6 +228,7 @@ export async function refineDraft(options: {
     "Aktuální text:",
     draft.body,
     "",
+    ...buildSampleBlock(await activeSamples()),
     "Pravidla úpravy:",
     "- Vyhov pokynu, ale drž pravidla své identity (tón, vykání, rozsah).",
     "- NESMÍŠ přidat žádné nové faktické tvrzení o firmě, které v aktuálním textu není.",

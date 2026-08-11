@@ -29,6 +29,7 @@ function facts(overrides: Partial<OutreachFacts> = {}): OutreachFacts {
     ],
     researchHooks: [],
     hasMockup: false,
+    samples: [],
     senderName: "Daniel Mitka",
     ...overrides,
   };
@@ -107,6 +108,7 @@ describe("firma bez vlastního webu", () => {
       evidence: [],
       researchHooks: [],
       hasMockup: false,
+      samples: [],
       senderName: "Mitsov Web",
     });
     expect(input).toContain("NENAŠLI");
@@ -129,6 +131,7 @@ describe("firma bez vlastního webu", () => {
       evidence: [],
       researchHooks: [],
       hasMockup: false,
+      samples: [],
       senderName: "Mitsov Web",
     });
     expect(input).not.toContain("NENAŠLI");
@@ -193,5 +196,30 @@ describe("háčky z company researche", () => {
 
     expect(onlyJudgment).not.toContain("Čerstvé háčky o firmě");
     expect(buildOutreachInput(facts())).not.toContain("Čerstvé háčky o firmě");
+  });
+});
+
+describe("vzorové e-maily v podkladech", () => {
+  it("vzory jdou do podkladů se zákazem brát z nich fakta", () => {
+    const input = buildOutreachInput(
+      facts({
+        samples: [
+          {
+            label: "restaurace, formální",
+            subject: "Dotaz k webu",
+            body: "Dobrý den,\n\ntakhle to píšu já.\n\nS pozdravem\nDaniel",
+            note: "vykání, konec otázkou",
+          },
+        ],
+      }),
+    );
+
+    expect(input).toContain("restaurace, formální");
+    expect(input).toContain("takhle to píšu já");
+    expect(input).toContain("NIKDY z nich neber fakta");
+  });
+
+  it("bez vzorů se o nich v podkladech nemluví", () => {
+    expect(buildOutreachInput(facts())).not.toContain("Vzorové e-maily");
   });
 });

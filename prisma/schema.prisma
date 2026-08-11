@@ -70,6 +70,7 @@ model User {
 
   salesEmailApprovals SalesEmailDraft[]
   salesPromptVersions SalesPromptVersion[]
+  salesEmailSamples   SalesEmailSample[]
 }
 
 /**
@@ -672,6 +673,27 @@ model AgentRun {
 
 /// Verze system promptů agentů (sekce 19). Aktivní je nejvýš jedna na agenta,
 /// staré verze se nemažou — běhy na ně odkazují.
+/// Vzorový e-mail od majitele studia: takhle chce, aby Outreach psal.
+/// Model z něj bere tón, stavbu a délku — nikdy fakta o cizí firmě.
+model SalesEmailSample {
+  id          String   @id @default(cuid())
+  /// Krátký název pro orientaci v seznamu („restaurace, formální“).
+  label       String
+  subject     String?
+  body        String
+  /// Co si na vzoru cenit — nálada, oslovení, čeho se vyvarovat.
+  note        String?
+  /// Vypnutý vzor zůstává uložený, ale k modelu nejde.
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([active])
+}
+
 model SalesPromptVersion {
   id          String   @id @default(cuid())
   agent       String
