@@ -6,6 +6,7 @@ import { useActionState } from "react";
 import {
   clearWebsiteRating,
   rateWebsite,
+  toggleWebsiteRating,
   type SalesFormState,
 } from "@/app/actions/sales";
 import { FormError } from "@/components/field";
@@ -22,6 +23,7 @@ export type RatedWebsite = {
   domain: string | null;
   humanWebScore: number;
   humanWebNote: string | null;
+  active: boolean;
   modelScore: number | null;
   hasScreenshot: boolean;
   campaignName: string;
@@ -81,11 +83,19 @@ function RatedRow({
             </a>
           ) : null}
           <span className="text-xs text-slate-400">{item.campaignName}</span>
-          {inUse ? (
+          {!item.active ? (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+              vypnutý
+            </span>
+          ) : inUse ? (
             <span className="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-800 ring-1 ring-sky-100">
               používá se při auditu
             </span>
-          ) : null}
+          ) : (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800 ring-1 ring-emerald-100">
+              v zásobě
+            </span>
+          )}
         </div>
 
         <p className="text-sm text-slate-700">
@@ -105,52 +115,65 @@ function RatedRow({
           <input type="hidden" name="leadId" value={item.leadId} />
           <div className="flex flex-wrap gap-1.5">
             {HUMAN_GRADES.map((option) => (
-              <button
+              <label
                 key={option.score}
-                type="submit"
-                name="score"
-                value={option.score}
-                disabled={rating}
                 title={option.hint}
-                className={`rounded-lg border px-2 py-1 text-xs transition disabled:opacity-60 ${
-                  option.score === grade.score
-                    ? "border-sky-300 bg-sky-50 font-medium text-sky-900"
-                    : "border-slate-300 text-slate-600 hover:bg-slate-50"
-                }`}
+                className="cursor-pointer rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-50 has-checked:border-sky-300 has-checked:bg-sky-50 has-checked:font-medium has-checked:text-sky-900"
               >
+                <input
+                  type="radio"
+                  name="score"
+                  value={option.score}
+                  defaultChecked={option.score === grade.score}
+                  className="sr-only"
+                />
                 {option.label}
-              </button>
+              </label>
             ))}
           </div>
           <input
             type="text"
             name="note"
             maxLength={200}
-            defaultValue=""
-            placeholder={
-              item.humanWebNote
-                ? "Přepsat poznámku (prázdné = zůstane stará)"
-                : "Nepovinně: čím si tu známku vysloužil"
-            }
+            defaultValue={item.humanWebNote ?? ""}
+            placeholder="Nepovinně: čím si tu známku vysloužil"
             className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-400"
           />
+          <button
+            type="submit"
+            disabled={rating}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+          >
+            {rating ? "Ukládám…" : "Uložit změnu"}
+          </button>
           <FormError message={rated?.error} />
           {rated?.success ? (
             <p className="text-xs text-emerald-700">{rated.success}</p>
           ) : null}
         </form>
 
-        <form action={clearAction}>
-          <input type="hidden" name="leadId" value={item.leadId} />
-          <button
-            type="submit"
-            disabled={clearing}
-            className="text-xs text-slate-500 underline-offset-2 hover:text-red-700 hover:underline disabled:opacity-60"
-          >
-            {clearing ? "Odebírám…" : "Odebrat ze vzorů"}
-          </button>
-          <FormError message={cleared?.error} />
-        </form>
+        <div className="flex items-center gap-3">
+          <form action={toggleWebsiteRating}>
+            <input type="hidden" name="leadId" value={item.leadId} />
+            <button
+              type="submit"
+              className="text-xs text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+            >
+              {item.active ? "Vypnout" : "Zapnout"}
+            </button>
+          </form>
+          <form action={clearAction}>
+            <input type="hidden" name="leadId" value={item.leadId} />
+            <button
+              type="submit"
+              disabled={clearing}
+              className="text-xs text-slate-500 underline-offset-2 hover:text-red-700 hover:underline disabled:opacity-60"
+            >
+              {clearing ? "Mažu…" : "Smazat hodnocení"}
+            </button>
+            <FormError message={cleared?.error} />
+          </form>
+        </div>
       </div>
     </li>
   );
@@ -162,7 +185,7 @@ function RatedRow({
  * i které z nich se právě používají.
  */
 export function CalibrationPanel({ items }: { items: RatedWebsite[] }) {
-  const usable = items.filter((item) => item.hasScreenshot);
+  const usable = items.filter((item) => item.hasScreenshot && item.active);
   const inUse = new Set(
     pickCalibrationExamples(
       usable.map((item) => ({ id: item.leadId, humanWebScore: item.humanWebScore })),
@@ -206,8 +229,10 @@ export function CalibrationPanel({ items }: { items: RatedWebsite[] }) {
               : items.length < 5
                 ? "ohodnocené weby"
                 : "ohodnocených webů"}
-            {usable.length < items.length
-              ? ` · ${items.length - usable.length} bez snímku, ty se do auditu poslat nedají`
+            {" · "}
+            {usable.length} použitelných pro kalibraci
+            {items.some((item) => item.active && !item.hasScreenshot)
+              ? " (weby bez snímku se poslat nedají)"
               : ""}
           </p>
         </>

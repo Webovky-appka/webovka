@@ -511,6 +511,9 @@ model SalesLead {
   /// audity. Model má laťku jinde než člověk, který weby staví.
   humanWebScore        Int?
   humanWebNote         String?
+  /// Vypnutý vzor zůstává uložený, ale audit ho nedostane — stejně jako
+  /// u vzorových e-mailů. Mazat hodnocení kvůli jednomu auditu je škoda.
+  humanWebActive       Boolean         @default(true)
   /// Company research: { hooks: [{claim, kind, source, category}], summary }.
   /// Čerstvé háčky do úvodu e-mailu — recenze, novinky, sezóna, nábory.
   research             Json?

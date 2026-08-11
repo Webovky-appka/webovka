@@ -352,6 +352,8 @@ export default async function LeadPage(props: {
           <RateWebsite
             leadId={lead.id}
             humanScore={lead.humanWebScore}
+            humanNote={lead.humanWebNote}
+            active={lead.humanWebActive}
             modelScore={lead.websiteScore}
           />
         </section>
