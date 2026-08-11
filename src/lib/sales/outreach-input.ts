@@ -1,4 +1,5 @@
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
+import { buildSampleBlock, type EmailSample } from "@/lib/sales/email-samples";
 import { usableInOutreach, type EvidenceItem } from "@/lib/sales/evidence";
 import {
   RESEARCH_CATEGORY_LABELS,
@@ -43,6 +44,8 @@ export type OutreachFacts = {
   researchHooks: ResearchHook[];
   /** Ke zprávě bude přiložený JPEG koncept nové homepage od Designera. */
   hasMockup: boolean;
+  /** Vzorové e-maily z Nastavení — ukázka tónu, ne zdroj faktů. */
+  samples: EmailSample[];
   senderName: string;
 };
 
@@ -126,6 +129,9 @@ export function buildOutreachInput(facts: OutreachFacts): string {
           "",
         ]
       : []),
+    // Vzory až za fakty: model si nejdřív načte, co o firmě smí tvrdit,
+    // a teprve pak dostane ukázku, jak to má znít.
+    ...buildSampleBlock(facts.samples),
     // Když odesílá „Mitsov Web" (fallback bez jména), nesmí vzniknout
     // zdvojení „Mitsov Web, Mitsov Web" v podpisu.
     facts.senderName === "Mitsov Web"

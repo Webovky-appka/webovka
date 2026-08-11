@@ -1,6 +1,7 @@
 import { UserRole } from "@prisma/client";
 
 import { CalibrationPanel } from "@/components/settings/calibration-panel";
+import { EmailSamplesPanel } from "@/components/settings/email-samples-panel";
 import { GmailPanel } from "@/components/settings/gmail-panel";
 import { GoogleLinksForm } from "@/components/settings/google-links-form";
 import { LegalPanel } from "@/components/settings/legal-panel";
@@ -27,32 +28,45 @@ export default async function SettingsPage(props: {
   const currentUser = await requireUser();
   const { gmail } = await props.searchParams;
 
-  const [users, templates, account, studio, rated] = await Promise.all([
-    prisma.user.findMany({
-      orderBy: { createdAt: "asc" },
-      select: { id: true, name: true, email: true, role: true },
-    }),
-    prisma.phaseTemplate.findMany({
-      orderBy: { position: "asc" },
-      include: { tasks: { orderBy: { position: "asc" } } },
-    }),
-    googleAccountFor(currentUser.id),
-    prisma.studioProfile.findUnique({ where: { id: "studio" } }),
-    // Sbírka vzorů pro kalibraci auditu — od nejlepšího webu k nejhoršímu.
-    prisma.salesLead.findMany({
-      where: { humanWebScore: { not: null } },
-      orderBy: [{ humanWebScore: "desc" }, { updatedAt: "desc" }],
-      select: {
-        id: true,
-        humanWebScore: true,
-        humanWebNote: true,
-        websiteScore: true,
-        screenshotDesktopKey: true,
-        prospect: { select: { name: true, domain: true } },
-        campaign: { select: { name: true } },
-      },
-    }),
-  ]);
+  const [users, templates, account, studio, rated, samples] = await Promise.all(
+    [
+      prisma.user.findMany({
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, email: true, role: true },
+      }),
+      prisma.phaseTemplate.findMany({
+        orderBy: { position: "asc" },
+        include: { tasks: { orderBy: { position: "asc" } } },
+      }),
+      googleAccountFor(currentUser.id),
+      prisma.studioProfile.findUnique({ where: { id: "studio" } }),
+      // Sbírka vzorů pro kalibraci auditu — od nejlepšího webu k nejhoršímu.
+      prisma.salesLead.findMany({
+        where: { humanWebScore: { not: null } },
+        orderBy: [{ humanWebScore: "desc" }, { updatedAt: "desc" }],
+        select: {
+          id: true,
+          humanWebScore: true,
+          humanWebNote: true,
+          websiteScore: true,
+          screenshotDesktopKey: true,
+          prospect: { select: { name: true, domain: true } },
+          campaign: { select: { name: true } },
+        },
+      }),
+      prisma.salesEmailSample.findMany({
+        orderBy: [{ active: "desc" }, { updatedAt: "desc" }],
+        select: {
+          id: true,
+          label: true,
+          subject: true,
+          body: true,
+          note: true,
+          active: true,
+        },
+      }),
+    ],
+  );
 
   return (
     <div className="space-y-6">
@@ -136,6 +150,8 @@ export default async function SettingsPage(props: {
         </h2>
         <TaskTemplatePanel templates={templates} />
       </section>
+
+      <EmailSamplesPanel samples={samples} />
 
       <CalibrationPanel
         items={rated.map((lead) => ({
