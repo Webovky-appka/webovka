@@ -4,6 +4,7 @@ import type { SalesCampaign } from "@prisma/client";
 import * as z from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import {
   buildSampleBlock,
   MAX_SAMPLES,
@@ -88,6 +89,13 @@ export async function draftOutreach(options: {
   });
   if (!lead) return { ok: false, error: "Lead nenalezen." };
 
+  // Doménu známe, ale audit nevznikl — web se nepodařilo načíst. E-mail se
+  // pak opře o samotnou nedostupnost a o webu nic dalšího netvrdí.
+  const siteUnreachable =
+    lead.audits.length === 0 &&
+    lead.prospect.domain !== null &&
+    !isSharedPlatformDomain(lead.prospect.domain);
+
   // Existující koncept se nepřepisuje — idempotence při opakovaném ticku.
   if (lead.emails.length > 0) {
     await prisma.salesLead.update({
@@ -117,6 +125,7 @@ export async function draftOutreach(options: {
     recommendation: findings.recommendation ?? null,
     evidence: findings.evidence ?? [],
     researchHooks: parseResearchHooks(lead.research),
+    siteUnreachable,
     hasMockup: lead.mockupKey !== null,
     samples: await activeSamples(),
     senderName,

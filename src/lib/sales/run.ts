@@ -159,7 +159,12 @@ async function pendingContactIds(
       (lead) =>
         lead._count.audits > 0 ||
         !lead.prospect.domain ||
-        isSharedPlatformDomain(lead.prospect.domain),
+        isSharedPlatformDomain(lead.prospect.domain) ||
+        // Web se nepodařilo načíst (mrtvá doména, rozbitý web, blokovaný
+        // robot). Firma je tím ale spíš lepší cíl než horší, takže po
+        // vyčerpaných pokusech jde dál bez auditu — dřív tady lead uvázl
+        // a běh skončil s nulami.
+        (stats.auditAttempts[lead.id] ?? 0) >= MAX_ATTEMPTS,
     )
     .map((lead) => lead.id)
     .filter((id) => (stats.contactAttempts[id] ?? 0) < MAX_ATTEMPTS);
@@ -413,7 +418,13 @@ export async function tickRun(runId: string): Promise<RunSnapshot | null> {
 
     if (!outcome.ok) {
       stats.errors.push(`Audit ${leadId}: ${outcome.error}`);
-      log(stats, `Audit příležitosti selhal: ${outcome.error}`);
+      const exhausted = (stats.auditAttempts[leadId] ?? 0) >= MAX_ATTEMPTS;
+      log(
+        stats,
+        exhausted
+          ? `Audit příležitosti selhal: ${outcome.error} Nedostupný web je sám o sobě argument — příležitost jde dál na kontakty a e-mail bez auditu.`
+          : `Audit příležitosti selhal: ${outcome.error} Zkusí se ještě jednou.`,
+      );
       continue;
     }
 

@@ -13,10 +13,13 @@ export function RescanButton({
   leadId,
   label = "Proskenovat znovu",
   prominent = false,
+  centered = false,
 }: {
   leadId: string;
   label?: string;
   prominent?: boolean;
+  /** Uprostřed prázdného rámu vypadá zarovnání doleva jako chyba. */
+  centered?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<SalesFormState, FormData>(
     rescanLead,
@@ -24,7 +27,10 @@ export function RescanButton({
   );
 
   return (
-    <form action={formAction} className="space-y-2">
+    <form
+      action={formAction}
+      className={`space-y-2 ${centered ? "flex flex-col items-center text-center" : ""}`}
+    >
       <input type="hidden" name="leadId" value={leadId} />
       <button
         type="submit"
@@ -37,7 +43,9 @@ export function RescanButton({
       >
         {pending ? "Spouštím proskenování…" : label}
       </button>
-      <p className={prominent ? "text-xs text-slate-500" : "text-xs text-slate-400"}>
+      <p
+        className={`max-w-md text-xs ${prominent ? "text-slate-500" : "text-slate-400"}`}
+      >
         Audit webu se snímky, kontakty, research a nový návrh e-mailu. Trvá pár
         minut, postup uvidíte na stránce běhu.
       </p>

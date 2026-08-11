@@ -10,6 +10,11 @@ import { formatDateTime, pluralCs } from "@/lib/format";
 import { AGENT_INFO, SALES_AGENTS } from "@/lib/sales/agents";
 import { getActivePrompt } from "@/lib/sales/prompts";
 import { prisma } from "@/lib/prisma";
+import {
+  PHASE_HEADING_CLASS,
+  statusLabelClass,
+  type LeadPhase,
+} from "@/lib/sales/status-style";
 
 export const metadata = {
   title: "Kampaň — Mitsov Web",
@@ -23,9 +28,14 @@ const RUN_LABELS: Record<string, string> = {
 };
 
 /** Skupiny seznamu: rozpracované, jednání, výhry a prohry zvlášť. */
-const LEAD_GROUPS: { title: string; statuses: string[] }[] = [
+const LEAD_GROUPS: {
+  title: string;
+  phase: LeadPhase;
+  statuses: string[];
+}[] = [
   {
     title: "V přípravě",
+    phase: "prep",
     statuses: [
       "DISCOVERED",
       "QUALIFYING",
@@ -37,10 +47,11 @@ const LEAD_GROUPS: { title: string; statuses: string[] }[] = [
   },
   {
     title: "Oslovené — jednáme",
+    phase: "talking",
     statuses: ["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"],
   },
-  { title: "Vyhrané", statuses: ["WON"] },
-  { title: "Prohrané", statuses: ["LOST"] },
+  { title: "Vyhrané", phase: "won", statuses: ["WON"] },
+  { title: "Prohrané", phase: "lost", statuses: ["LOST"] },
 ];
 
 const LEAD_LABELS: Record<string, string> = {
@@ -205,7 +216,9 @@ export default async function CampaignPage(props: {
         if (groupLeads.length === 0) return null;
         return (
           <section key={group.title} className="space-y-3">
-            <h2 className="font-medium text-slate-900">
+            <h2
+              className={`font-medium ${PHASE_HEADING_CLASS[group.phase]}`}
+            >
               {group.title} ({groupLeads.length})
             </h2>
             <ul className="space-y-2">
@@ -255,9 +268,7 @@ export default async function CampaignPage(props: {
                       >
                         {lead.score ?? "—"}
                       </p>
-                      <p
-                        className={`text-xs ${lead.status === "LOST" ? "font-medium text-red-600" : lead.status === "WON" ? "font-medium text-emerald-700" : "text-slate-500"}`}
-                      >
+                      <p className={`text-xs ${statusLabelClass(lead.status)}`}>
                         {LEAD_LABELS[lead.status] ?? lead.status}
                       </p>
                     </div>

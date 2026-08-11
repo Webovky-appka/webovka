@@ -7,6 +7,7 @@ import { ReopenButton } from "@/components/sales/reopen-button";
 import { RateWebsite } from "@/components/sales/rate-website";
 import { RescanButton } from "@/components/sales/rescan-button";
 import { ReviewPanel } from "@/components/sales/review-panel";
+import { UndoWonButton } from "@/components/sales/undo-won-button";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { googleAccountFor } from "@/lib/google";
@@ -427,6 +428,7 @@ export default async function LeadPage(props: {
               ? "Otevřít zakázku"
               : `Založit klienta ${lead.prospect.name}`}
           </Link>
+          <UndoWonButton leadId={lead.id} />
         </section>
       ) : null}
 
@@ -617,11 +619,12 @@ export default async function LeadPage(props: {
               : "Audit webu zatím neproběhl, takže tady nejsou ani snímky, ani zjištění."}
           </p>
           {rescanAllowed ? (
-            <div className="flex justify-center text-left">
+            <div className="flex justify-center">
               <RescanButton
                 leadId={lead.id}
                 label="Proskenovat a připravit e-mail"
                 prominent
+                centered
               />
             </div>
           ) : canReaudit ? (

@@ -5,6 +5,7 @@ import { RunTicker } from "@/components/sales/run-ticker";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { statusLabelClass } from "@/lib/sales/status-style";
 import { formatCost } from "@/lib/sales/pricing";
 import type { RunStats } from "@/lib/sales/run";
 
@@ -147,7 +148,7 @@ export default async function RunPage(props: {
                     <p className="text-lg font-semibold text-slate-900">
                       {lead.score ?? "—"}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className={`text-xs ${statusLabelClass(lead.status)}`}>
                       {LEAD_STATUS_LABELS[lead.status] ?? lead.status}
                       {lead.opportunityGap !== null
                         ? ` · gap ${lead.opportunityGap > 0 ? "+" : ""}${lead.opportunityGap}`
