@@ -48,6 +48,11 @@ export type OutreachFacts = {
   recommendation: string | null;
   evidence: EvidenceItem[];
   researchHooks: ResearchHook[];
+  /**
+   * Doménu známe, ale web se nepodařilo načíst (mrtvý, rozbitý, blokuje).
+   * Audit tedy neexistuje — a nedostupnost je sama silný argument.
+   */
+  siteUnreachable: boolean;
   /** Ke zprávě bude přiložený JPEG koncept nové homepage od Designera. */
   hasMockup: boolean;
   /** Vzorové e-maily z Nastavení — ukázka tónu, ne zdroj faktů. */
@@ -107,6 +112,18 @@ export function buildOutreachInput(facts: OutreachFacts): string {
           "",
         ]
       : []),
+    ...(facts.siteUnreachable
+      ? [
+          `Web ${facts.domain} jsme našli, ale NENAČETL SE nám — opakovaně.`,
+          "To je to hlavní, o čem e-mail bude: když se nenačte nám, nenačte se",
+          "ani zákazníkovi, který na něj klikne v Googlu nebo na vizitce.",
+          "Formuluj to zdvořile a jako pozorování, ne obvinění: „zkoušel jsem",
+          "otevřít váš web a nenačetl se mi“. Připusť, že to může být chvilkový",
+          "výpadek — právě proto se ptáme. Nabídni, že web zprovozníme nebo",
+          "postavíme nový. NIKDY nehodnoť vzhled ani obsah, neviděli jsme ho.",
+          "",
+        ]
+      : []),
     "Ověřená pozorování z webu (jen tato smíš v e-mailu tvrdit):",
     ...(usable.length > 0
       ? usable.map((item) => `- ${item.claim} [${item.source}]`)
@@ -114,7 +131,11 @@ export function buildOutreachInput(facts: OutreachFacts): string {
         ? [
             "- vlastní web firmy se nám nepodařilo najít — jediné tvrzení o „webu“, které smíš použít, a jen touto formulací",
           ]
-        : ["- žádná — piš obecněji a nic o webu netvrď"]),
+        : facts.siteUnreachable
+          ? [
+              `- web ${facts.domain} se nám opakovaně nenačetl — jediné, co o jejich webu smíš tvrdit`,
+            ]
+          : ["- žádná — piš obecněji a nic o webu netvrď"]),
     "",
     "Hlavní problémy z auditu (interní kontext, vyber nejvýš 1–2 a formuluj zdvořile):",
     ...(topProblems.length > 0

@@ -940,6 +940,64 @@ export async function deleteEmailSample(
   return { success: "Vzor smazán." };
 }
 
+/**
+ * Vezme zpět výhru — příležitost se vrátí mezi oslovené a odpojí se od
+ * klienta. Založeného klienta ani zakázku NEMAŽE: může na nich už být práce
+ * a mazat cizí data kvůli jednomu překliku by bylo horší než překlik sám.
+ * Zpráva i timeline říkají, že zůstávají a kde je případně smazat.
+ */
+export async function undoWon(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      prospectId: true,
+      campaignId: true,
+      status: true,
+      clientId: true,
+      client: { select: { companyName: true } },
+    },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (lead.status !== "WON") {
+    return { error: "Vzít zpět jde jen vyhraná příležitost." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: "CONTACTED", clientId: null },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "outcome",
+      body: `${user.name} vzal výhru zpět — příležitost je zpět na Oslovená.${
+        lead.client
+          ? ` Klient „${lead.client.companyName}“ i jeho zakázka zůstávají v Zakázkách, případně je smažte tam.`
+          : ""
+      }`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  revalidatePath("/sales");
+  revalidatePath("/projects");
+  return {
+    success: lead.client
+      ? `Výhra vzata zpět. Klient „${lead.client.companyName}“ a jeho zakázka zůstávají založené — smazat je jde v Zakázkách.`
+      : "Výhra vzata zpět, příležitost je mezi oslovenými.",
+  };
+}
+
 /** Vypnutý vzor zůstává uložený, jen ho audit nedostane. */
 export async function toggleWebsiteRating(formData: FormData) {
   await requireUser();

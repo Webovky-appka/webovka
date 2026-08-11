@@ -28,6 +28,7 @@ function facts(overrides: Partial<OutreachFacts> = {}): OutreachFacts {
       { claim: "Majitel plánuje expanzi", kind: "UNKNOWN", source: "" },
     ],
     researchHooks: [],
+    siteUnreachable: false,
     hasMockup: false,
     samples: [],
     senderName: "Daniel Mitka",
@@ -107,6 +108,7 @@ describe("firma bez vlastního webu", () => {
       recommendation: null,
       evidence: [],
       researchHooks: [],
+      siteUnreachable: false,
       hasMockup: false,
       samples: [],
       senderName: "Mitsov Web",
@@ -130,6 +132,7 @@ describe("firma bez vlastního webu", () => {
       recommendation: null,
       evidence: [],
       researchHooks: [],
+      siteUnreachable: false,
       hasMockup: false,
       samples: [],
       senderName: "Mitsov Web",
@@ -221,5 +224,26 @@ describe("vzorové e-maily v podkladech", () => {
 
   it("bez vzorů se o nich v podkladech nemluví", () => {
     expect(buildOutreachInput(facts())).not.toContain("Vzorové e-maily");
+  });
+});
+
+describe("web, který se nenačetl", () => {
+  /**
+   * Nedostupný web je prodejní argument, ale jen o něm se smí mluvit —
+   * vzhled ani obsah nikdo neviděl, takže o nich nesmí padnout ani slovo.
+   */
+  it("podklady staví e-mail na nedostupnosti a zakazují hodnotit vzhled", () => {
+    const input = buildOutreachInput(
+      facts({ siteUnreachable: true, evidence: [], problems: [] }),
+    );
+
+    expect(input).toContain("NENAČETL SE");
+    expect(input).toContain("nenačetl se mi");
+    expect(input).toContain("NIKDY nehodnoť vzhled ani obsah");
+    expect(input).toContain("se nám opakovaně nenačetl");
+  });
+
+  it("u načteného webu se o nedostupnosti nemluví", () => {
+    expect(buildOutreachInput(facts())).not.toContain("NENAČETL SE");
   });
 });
