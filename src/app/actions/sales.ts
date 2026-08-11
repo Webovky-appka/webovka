@@ -1101,7 +1101,12 @@ export async function setLeadOutcome(
       leadId,
       actor: "user",
       kind: "outcome",
-      body: `${user.name}: ${OUTCOME_LABELS[outcome]}${outcome === "LOST" ? ` — ${lostReason}` : "."}`,
+      // Odvolání kroku musí být v timeline poznat na první přečtení —
+      // „Vráceno na Oslovená“ samo o sobě neříká, co se vlastně vrátilo.
+      body:
+        outcome === "CONTACTED"
+          ? `${user.name} vzal zpět poslední krok (${OUTCOME_LABELS[lead.status] ?? lead.status}) — příležitost je zpět na Oslovená, bez odpovědi.`
+          : `${user.name}: ${OUTCOME_LABELS[outcome]}${outcome === "LOST" ? ` — ${lostReason}` : "."}`,
     },
   });
 
