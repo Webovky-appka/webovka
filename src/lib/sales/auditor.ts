@@ -244,6 +244,8 @@ export async function auditLead(options: {
     const rated = await prisma.salesLead.findMany({
       where: {
         humanWebScore: { not: null },
+        // Vypnuté vzory zůstávají v Nastavení, ale ke kalibraci nejdou.
+        humanWebActive: true,
         screenshotDesktopKey: { not: null },
         id: { not: leadId },
       },

@@ -13,6 +13,12 @@ import {
  * do podkladů nepatří vůbec, ani jako „kontext".
  */
 
+/**
+ * Kolik textu smí mít pokyn pro AI úpravu návrhu. Původních 500 znaků bylo
+ * na vysvětlení, co se má přepsat, málo — tohle je zhruba tisíc slov.
+ */
+export const MAX_INSTRUCTION_CHARS = 6000;
+
 export const OUTREACH_STRATEGIES = ["visual", "observation", "business"] as const;
 
 export type OutreachStrategy = (typeof OUTREACH_STRATEGIES)[number];

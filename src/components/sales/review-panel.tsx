@@ -10,6 +10,7 @@ import {
   saveEmailDraft,
   type SalesFormState,
 } from "@/app/actions/sales";
+import { MAX_INSTRUCTION_CHARS } from "@/lib/sales/outreach-input";
 import { Field, FormError, inputClasses } from "@/components/field";
 import { STRATEGY_LABELS, isOutreachStrategy } from "@/lib/sales/outreach-input";
 
@@ -159,12 +160,21 @@ export function ReviewPanel({
       <form action={refineAction} className="space-y-2">
         <input type="hidden" name="draftId" value={draft.id} />
         <input type="hidden" name="leadId" value={leadId} />
-        <div className="flex flex-wrap items-center gap-2">
-          <input
+        <div className="flex flex-wrap items-start gap-2">
+          {/* Textarea, ne input: dlouhý pokyn musí být vidět celý, ne po
+              jednom řádku. Roste s textem až do rozumné výšky. */}
+          <textarea
             name="instruction"
-            placeholder="Pokyn pro AI — např.: přátelštější tón, zmiň letní sezónu, zkrať to"
+            rows={2}
+            maxLength={MAX_INSTRUCTION_CHARS}
+            onInput={(event) => {
+              const el = event.currentTarget;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
+            }}
+            placeholder="Pokyn pro AI — např.: přátelštější tón, zmiň letní sezónu, zkrať to. Klidně napište celý odstavec."
             aria-label="Pokyn pro úpravu e-mailu"
-            className="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            className="field-sizing-content min-h-16 min-w-56 flex-1 resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <button
             type="submit"

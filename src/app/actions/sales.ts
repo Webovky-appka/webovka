@@ -14,6 +14,7 @@ import { auditLead } from "@/lib/sales/auditor";
 import { lookupClientDetails } from "@/lib/sales/client-details";
 import { canRescan, canUndoSend, LOST_REASONS } from "@/lib/sales/funnel";
 import { gradeFor } from "@/lib/sales/human-grades";
+import { MAX_INSTRUCTION_CHARS } from "@/lib/sales/outreach-input";
 import { refineDraft } from "@/lib/sales/outreach";
 
 import { createProjectWithPhases } from "./projects";
@@ -818,13 +819,14 @@ export async function rateWebsite(
   });
   if (!lead) return { error: "Příležitost nenalezena." };
 
-  // Prázdné pole poznámku nemaže — mazat se dá jen odebráním hodnocení,
-  // jinak by ji smazalo každé překlepnutí známky.
-  const note = rawNote === "" ? lead.humanWebNote : rawNote;
+  // Pole poznámky je předvyplněné tím, co je uložené, takže se ukládá přesně
+  // to, co v něm zůstalo — vymazání pole poznámku smaže.
+  const note = rawNote === "" ? null : rawNote;
 
   await prisma.salesLead.update({
     where: { id: leadId },
-    data: { humanWebScore: score, humanWebNote: note },
+    // Uložení hodnocení ho zároveň zapíná: kdo dává známku, chce ji používat.
+    data: { humanWebScore: score, humanWebNote: note, humanWebActive: true },
   });
   await prisma.salesActivity.create({
     data: {
@@ -938,6 +940,26 @@ export async function deleteEmailSample(
   return { success: "Vzor smazán." };
 }
 
+/** Vypnutý vzor zůstává uložený, jen ho audit nedostane. */
+export async function toggleWebsiteRating(formData: FormData) {
+  await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { humanWebScore: true, humanWebActive: true },
+  });
+  if (!lead || lead.humanWebScore === null) return;
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { humanWebActive: !lead.humanWebActive },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/settings");
+}
+
 /** Odebrání hodnocení ze sbírky vzorů — omyl nemá kalibrovat další audity. */
 export async function clearWebsiteRating(
   _prevState: SalesFormState,
@@ -955,7 +977,7 @@ export async function clearWebsiteRating(
 
   await prisma.salesLead.update({
     where: { id: leadId },
-    data: { humanWebScore: null, humanWebNote: null },
+    data: { humanWebScore: null, humanWebNote: null, humanWebActive: true },
   });
   await prisma.salesActivity.create({
     data: {
@@ -1083,8 +1105,10 @@ export async function refineEmailDraft(
   if (instruction.length < 5) {
     return { error: "Napište, co má AI na e-mailu změnit." };
   }
-  if (instruction.length > 500) {
-    return { error: "Pokyn je příliš dlouhý." };
+  if (instruction.length > MAX_INSTRUCTION_CHARS) {
+    return {
+      error: `Pokyn je příliš dlouhý — vejde se ${MAX_INSTRUCTION_CHARS} znaků, tedy asi tisíc slov.`,
+    };
   }
 
   const outcome = await refineDraft({
