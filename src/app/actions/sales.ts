@@ -1,6 +1,6 @@
 "use server";
 
-import { SalesCampaignStatus } from "@prisma/client";
+import { Prisma, SalesCampaignStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import * as z from "zod";
@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
 import { auditLead } from "@/lib/sales/auditor";
 import { lookupClientDetails } from "@/lib/sales/client-details";
-import { LOST_REASONS } from "@/lib/sales/funnel";
+import { canRescan, canUndoSend, LOST_REASONS } from "@/lib/sales/funnel";
 import { refineDraft } from "@/lib/sales/outreach";
 
 import { createProjectWithPhases } from "./projects";
@@ -497,10 +497,174 @@ export async function rejectLead(
 }
 
 /**
- * Znovuotevření zamítnuté nebo prohrané příležitosti. Zamítnutá se vrací do
- * nejzazšího stavu, který odpovídá tomu, co už má hotové: s návrhem e-mailu
- * zpět ke schválení (návrh ožije), s auditem mezi kvalifikované, jinak mezi
- * objevené. Prohraná se vrací mezi oslovené — e-mail už odešel.
+ * Uklidí to, co má proskenování udělat znovu: audit se maže (screenshoty se
+ * stejně přepisují na stejné klíče), rozepsaný návrh jde mezi zamítnuté,
+ * research i koncept homepage se zahodí. `mockupVariant` zůstává — vylosovaná
+ * varianta experimentu se nesmí měnit, jinak by měření nic neřeklo.
+ */
+async function resetLeadForRescan(leadId: string): Promise<void> {
+  await prisma.salesAudit.deleteMany({ where: { leadId } });
+  await prisma.salesEmailDraft.updateMany({
+    where: { leadId, status: "DRAFT" },
+    data: { status: "REJECTED" },
+  });
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: {
+      // Kvalifikace se znovu nepouští: když člověk řekne „tuhle chci“,
+      // nesmí ji práh kampaně vyhodit podruhé.
+      status: "QUALIFIED",
+      lostReason: null,
+      // Json sloupec se maže DbNull, `null` by Prisma brala jako JSON null.
+      research: Prisma.DbNull,
+      researchAt: null,
+      mockupKey: null,
+      mockupAt: null,
+    },
+  });
+}
+
+/**
+ * Běh, který proskenování odpracuje. Fáze po kvalifikaci se dívají na celou
+ * kampaň, takže rozjetý běh práci převezme sám; jinak se založí nový
+ * s přeskočeným hledáním kandidátů — nové firmy hledat nechceme.
+ */
+async function ensureRescanRun(campaignId: string): Promise<string> {
+  const running = await prisma.salesRun.findFirst({
+    where: { campaignId, status: { in: ["QUEUED", "RUNNING"] } },
+    select: { id: true },
+  });
+  if (running) return running.id;
+
+  const run = await prisma.salesRun.create({
+    data: { campaignId, stats: { discovered: true } },
+    select: { id: true },
+  });
+  return run.id;
+}
+
+/**
+ * Kompletní proskenování jedné příležitosti: audit se snímky, kontakty,
+ * research, koncept homepage a nový návrh e-mailu. Práci odpracuje běh
+ * kampaně, takže se stránka přesměruje na něj — tam je vidět postup.
+ */
+export async function rescanLead(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+  if (!isAiConfigured()) {
+    return { error: "Bez OPENAI_API_KEY agenti neběží. Doplňte klíč do prostředí." };
+  }
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, status: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (!canRescan(lead.status)) {
+    return {
+      error: "Proskenovat znovu jde jen příležitost, které jsme ještě nenapsali.",
+    };
+  }
+
+  await resetLeadForRescan(leadId);
+  const runId = await ensureRescanRun(lead.campaignId);
+
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "rescan",
+      body: `${user.name} pustil kompletní proskenování — audit webu, kontakty, research i nový návrh e-mailu. Práh kampaně se u téhle příležitosti neuplatní.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  revalidatePath("/sales");
+  redirect(`/sales/runs/${runId}`);
+}
+
+/**
+ * Vezme zpět „e-mail odešel“: odeslaný návrh se vrátí ke schválení. Skutečně
+ * odeslanou zprávu to neodvolá — jen náš stav, a text to říká nahlas.
+ */
+export async function undoEmailSent(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      prospectId: true,
+      campaignId: true,
+      status: true,
+      emails: {
+        where: { status: "SENT" },
+        orderBy: { sentAt: "desc" },
+        take: 1,
+        select: { id: true },
+      },
+    },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (!canUndoSend(lead.status)) {
+    return {
+      error:
+        "Vzít odeslání zpět jde jen u čerstvě oslovené příležitosti. Nejdřív vraťte výsledek na „Oslovená“.",
+    };
+  }
+
+  const sent = lead.emails[0] ?? null;
+  if (!sent) {
+    return { error: "Nenašel jsem odeslaný e-mail, který by šlo vzít zpět." };
+  }
+
+  await prisma.salesEmailDraft.update({
+    where: { id: sent.id },
+    data: {
+      status: "DRAFT",
+      sentAt: null,
+      approvedAt: null,
+      approvedById: null,
+    },
+  });
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: "READY_FOR_REVIEW" },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "undo_sent",
+      body: `${user.name} vzal odeslání zpět — návrh je znovu ke schválení. Pokud e-mail skutečně odešel, adresát ho má.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  revalidatePath("/sales");
+  return {
+    success:
+      "Odeslání vzato zpět, návrh je zpět ke schválení. Pokud e-mail opravdu odešel, adresát ho ale má.",
+  };
+}
+
+/**
+ * Znovuotevření zamítnuté nebo prohrané příležitosti. Zamítnutá se s návrhem
+ * e-mailu vrací ke schválení (návrh ožije); bez návrhu není co schvalovat,
+ * takže se rovnou pustí kompletní proskenování — jinak by zůstala trčet mezi
+ * objevenými, kde ji žádný běh nikdy nevezme.
+ * Prohraná se vrací mezi oslovené — e-mail už odešel.
  * Otevřením končí i cooldown — firma přestává být blokovaná pro dedup.
  */
 export async function reopenLead(
@@ -544,40 +708,81 @@ export async function reopenLead(
   }
 
   const draft = lead.emails[0] ?? null;
-  const nextStatus = draft
-    ? "READY_FOR_REVIEW"
-    : lead._count.audits > 0
-      ? "QUALIFIED"
-      : "DISCOVERED";
+  const revivable =
+    draft && (draft.status === "DRAFT" || draft.status === "REJECTED")
+      ? draft
+      : null;
 
-  await prisma.salesLead.update({
-    where: { id: leadId },
-    data: { status: nextStatus, lostReason: null },
-  });
-  if (draft && draft.status === "REJECTED") {
-    await prisma.salesEmailDraft.update({
-      where: { id: draft.id },
-      data: { status: "DRAFT" },
+  if (revivable) {
+    await prisma.salesLead.update({
+      where: { id: leadId },
+      data: { status: "READY_FOR_REVIEW", lostReason: null },
     });
+    if (revivable.status === "REJECTED") {
+      await prisma.salesEmailDraft.update({
+        where: { id: revivable.id },
+        data: { status: "DRAFT" },
+      });
+    }
+    await prisma.salesActivity.create({
+      data: {
+        prospectId: lead.prospectId,
+        leadId,
+        actor: "user",
+        kind: "reopened",
+        body: `${user.name} příležitost znovu otevřel — návrh e-mailu ožil a je ke schválení.`,
+      },
+    });
+
+    revalidatePath(`/sales/leads/${leadId}`);
+    revalidatePath(`/sales/${lead.campaignId}`);
+    revalidatePath("/sales");
+    return { success: "Příležitost je zpět ke schválení, návrh e-mailu ožil." };
   }
+
+  // Bez klíče nemáme čím skenovat — příležitost aspoň otevřeme, ať se s ní
+  // dá pracovat ručně, a napíšeme proč se nic dalšího nestalo.
+  if (!isAiConfigured()) {
+    await prisma.salesLead.update({
+      where: { id: leadId },
+      data: {
+        status: lead._count.audits > 0 ? "QUALIFIED" : "DISCOVERED",
+        lostReason: null,
+      },
+    });
+    await prisma.salesActivity.create({
+      data: {
+        prospectId: lead.prospectId,
+        leadId,
+        actor: "user",
+        kind: "reopened",
+        body: `${user.name} příležitost znovu otevřel. Bez OPENAI_API_KEY ji nejde proskenovat, návrh e-mailu tedy nevznikne.`,
+      },
+    });
+    revalidatePath(`/sales/leads/${leadId}`);
+    revalidatePath(`/sales/${lead.campaignId}`);
+    return {
+      error:
+        "Příležitost je otevřená, ale bez OPENAI_API_KEY ji nemám čím proskenovat.",
+    };
+  }
+
+  await resetLeadForRescan(leadId);
+  const runId = await ensureRescanRun(lead.campaignId);
   await prisma.salesActivity.create({
     data: {
       prospectId: lead.prospectId,
       leadId,
       actor: "user",
       kind: "reopened",
-      body: `${user.name} příležitost znovu otevřel.`,
+      body: `${user.name} příležitost znovu otevřel — spustilo se kompletní proskenování, po dokončení bude Ke schválení. Práh kampaně se u ní už neuplatní.`,
     },
   });
 
   revalidatePath(`/sales/leads/${leadId}`);
   revalidatePath(`/sales/${lead.campaignId}`);
-  return {
-    success:
-      nextStatus === "READY_FOR_REVIEW"
-        ? "Příležitost je zpět ke schválení, návrh e-mailu ožil."
-        : "Příležitost je znovu otevřená.",
-  };
+  revalidatePath("/sales");
+  redirect(`/sales/runs/${runId}`);
 }
 
 /**

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { computeFunnel, LOST_REASONS } from "./funnel";
+import {
+  canRescan,
+  canUndoSend,
+  computeFunnel,
+  LOST_REASONS,
+} from "./funnel";
 
 describe("trychtýř", () => {
   it("stav leadu se počítá do všech fází, kterými prošel", () => {
@@ -69,5 +74,52 @@ describe("trychtýř", () => {
     expect(LOST_REASONS).toContain("Už mají agenturu");
     expect(LOST_REASONS).toContain("Špatné načasování");
     expect(LOST_REASONS.length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe("kompletní proskenování", () => {
+  /**
+   * Zamítnutá i objevená příležitost se proskenovat musí — jinak zůstane
+   * trčet ve stavu, ve kterém ji žádný běh nikdy nevezme.
+   */
+  it("jde ve všech stavech před oslovením včetně zamítnuté", () => {
+    for (const status of [
+      "DISCOVERED",
+      "QUALIFYING",
+      "QUALIFIED",
+      "RESEARCHING",
+      "READY_FOR_REVIEW",
+      "APPROVED",
+      "REJECTED",
+    ]) {
+      expect(canRescan(status)).toBe(true);
+    }
+  });
+
+  /** Po oslovení by rescan přepsal historii toho, co jsme skutečně poslali. */
+  it("po oslovení už ne", () => {
+    for (const status of [
+      "CONTACTED",
+      "REPLIED",
+      "MEETING",
+      "PROPOSAL",
+      "WON",
+      "LOST",
+    ]) {
+      expect(canRescan(status)).toBe(false);
+    }
+  });
+});
+
+describe("odvolání odeslání", () => {
+  it("jde jen z čerstvě oslovené", () => {
+    expect(canUndoSend("CONTACTED")).toBe(true);
+  });
+
+  it("z posunutých stavů ne — nejdřív se vrací výsledek", () => {
+    for (const status of ["REPLIED", "MEETING", "PROPOSAL", "WON", "LOST"]) {
+      expect(canUndoSend(status)).toBe(false);
+    }
+    expect(canUndoSend("READY_FOR_REVIEW")).toBe(false);
   });
 });
