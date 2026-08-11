@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { EVIDENCE_KINDS } from "@/lib/sales/evidence";
 import { fetchAuditContent } from "@/lib/sales/fetch-site";
+import { gradeFor, pickCalibrationExamples } from "@/lib/sales/human-grades";
 import { callAgentModel, type AgentImage } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
 import { captureAndStore, salesScreenshotKey } from "@/lib/sales/screenshot";
@@ -234,9 +235,10 @@ export async function auditLead(options: {
       ]
     : [];
 
-  // Kalibrace lidskou laťkou: poslední weby ohodnocené majitelem studia se
-  // přikládají jako vzorové snímky. Model má tendenci mačkat vše do středu
-  // škály — příklady s lidskou známkou ho srovnávají s tím, kdo weby staví.
+  // Kalibrace lidskou laťkou: weby ohodnocené majitelem studia se přikládají
+  // jako vzorové snímky. Model má tendenci mačkat vše do středu škály, takže
+  // vzory se berou rozprostřené po celé škále, ne jen posledně ohodnocené —
+  // bez obou konců laťky se hodnocení nikam neposune.
   const calibrationNotes: string[] = [];
   if (shots) {
     const rated = await prisma.salesLead.findMany({
@@ -246,16 +248,25 @@ export async function auditLead(options: {
         id: { not: leadId },
       },
       orderBy: { updatedAt: "desc" },
-      take: 3,
+      // Ze zásobníku posledních hodnocení se pak vybírá napříč škálou.
+      take: 40,
       select: {
         id: true,
         humanWebScore: true,
+        humanWebNote: true,
         websiteScore: true,
         prospect: { select: { name: true } },
       },
     });
 
-    for (const example of rated) {
+    const examples = pickCalibrationExamples(
+      rated.filter(
+        (lead): lead is typeof lead & { humanWebScore: number } =>
+          lead.humanWebScore !== null,
+      ),
+    );
+
+    for (const example of examples) {
       try {
         const data = await readFile(salesScreenshotKey(example.id, "desktop"));
         images.push({
@@ -264,7 +275,15 @@ export async function auditLead(options: {
           mimeType: "image/jpeg",
         });
         calibrationNotes.push(
-          `${calibrationNotes.length + 1}. ${example.prospect.name} — majitel studia hodnotí ${example.humanWebScore}/100${example.websiteScore !== null ? ` (dřívější odhad modelu ${example.websiteScore})` : ""}`,
+          [
+            `${calibrationNotes.length + 1}. ${example.prospect.name} — majitel studia hodnotí ${example.humanWebScore}/100`,
+            ` (${gradeFor(example.humanWebScore).label}`,
+            example.websiteScore !== null
+              ? `, dřívější odhad modelu ${example.websiteScore}`
+              : "",
+            ")",
+            example.humanWebNote ? ` — „${example.humanWebNote}“` : "",
+          ].join(""),
         );
       } catch {
         // Snímek už v úložišti není — příklad se prostě vynechá.

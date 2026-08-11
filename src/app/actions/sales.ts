@@ -13,6 +13,7 @@ import { isSalesAgent } from "@/lib/sales/agents";
 import { auditLead } from "@/lib/sales/auditor";
 import { lookupClientDetails } from "@/lib/sales/client-details";
 import { canRescan, canUndoSend, LOST_REASONS } from "@/lib/sales/funnel";
+import { gradeFor } from "@/lib/sales/human-grades";
 import { refineDraft } from "@/lib/sales/outreach";
 
 import { createProjectWithPhases } from "./projects";
@@ -787,8 +788,9 @@ export async function reopenLead(
 
 /**
  * Vaše hodnocení webu (0–100) — ukládá se k příležitosti a slouží jako
- * kalibrační vzor: příští audity dostanou poslední ohodnocené snímky
- * s vaší známkou, aby model srovnal laťku s člověkem, který weby staví.
+ * kalibrační vzor: příští audity dostanou vaše ohodnocené snímky napříč
+ * škálou, aby model srovnal laťku s člověkem, který weby staví.
+ * Nepovinná poznámka jde modelu s sebou — „proč“ učí víc než číslo.
  */
 export async function rateWebsite(
   _prevState: SalesFormState,
@@ -801,16 +803,28 @@ export async function rateWebsite(
   if (!Number.isInteger(score) || score < 0 || score > 100) {
     return { error: "Hodnocení je číslo 0 až 100." };
   }
+  const rawNote = String(formData.get("note") ?? "").trim();
+  if (rawNote.length > 200) return { error: "Poznámka je příliš dlouhá." };
 
   const lead = await prisma.salesLead.findUnique({
     where: { id: leadId },
-    select: { id: true, prospectId: true, campaignId: true, websiteScore: true },
+    select: {
+      id: true,
+      prospectId: true,
+      campaignId: true,
+      websiteScore: true,
+      humanWebNote: true,
+    },
   });
   if (!lead) return { error: "Příležitost nenalezena." };
 
+  // Prázdné pole poznámku nemaže — mazat se dá jen odebráním hodnocení,
+  // jinak by ji smazalo každé překlepnutí známky.
+  const note = rawNote === "" ? lead.humanWebNote : rawNote;
+
   await prisma.salesLead.update({
     where: { id: leadId },
-    data: { humanWebScore: score },
+    data: { humanWebScore: score, humanWebNote: note },
   });
   await prisma.salesActivity.create({
     data: {
@@ -818,12 +832,49 @@ export async function rateWebsite(
       leadId,
       actor: "user",
       kind: "rated",
-      body: `${user.name} ohodnotil web ${score}/100${lead.websiteScore !== null ? ` (model dal ${lead.websiteScore})` : ""}. Použije se pro kalibraci příštích auditů.`,
+      body: `${user.name} ohodnotil web ${score}/100 (${gradeFor(score).label})${lead.websiteScore !== null ? `, model dal ${lead.websiteScore}` : ""}${rawNote ? ` — „${rawNote}“` : ""}. Použije se pro kalibraci příštích auditů.`,
     },
   });
 
   revalidatePath(`/sales/leads/${leadId}`);
-  return { success: `Uloženo: ${score}/100. Příští audity se podle vás srovnají.` };
+  revalidatePath("/settings");
+  return {
+    success: `Uloženo: ${gradeFor(score).label} (${score}/100). Příští audity se podle vás srovnají.`,
+  };
+}
+
+/** Odebrání hodnocení ze sbírky vzorů — omyl nemá kalibrovat další audity. */
+export async function clearWebsiteRating(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, humanWebScore: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (lead.humanWebScore === null) return { error: "Tenhle web hodnocený není." };
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { humanWebScore: null, humanWebNote: null },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "rated",
+      body: `${user.name} odebral své hodnocení webu (bylo ${lead.humanWebScore}/100). Ze vzorů pro kalibraci vypadl.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath("/settings");
+  return { success: "Hodnocení odebráno, web už kalibraci neovlivňuje." };
 }
 
 /**
