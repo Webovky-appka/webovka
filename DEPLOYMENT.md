@@ -279,10 +279,12 @@ nastaveného DSN je celé sledování vypnuté a aplikace běží jako dřív.
 1. Založte účet na sentry.io (free tier stačí) a projekt typu **Next.js**.
 2. Z nastavení projektu zkopírujte **DSN** a vložte na Vercel jako
    `NEXT_PUBLIC_SENTRY_DSN` (Production; Preview podle uvážení).
-3. Volitelně pro čitelné stack traces (nahrávání source map při buildu):
-   `SENTRY_ORG` (slug organizace), `SENTRY_PROJECT` (slug projektu) a
-   `SENTRY_AUTH_TOKEN` (Settings → Auth Tokens, scope `project:releases`).
-   Bez nich vše funguje, jen jsou stack traces minifikované.
+3. Volitelně pro čitelné stack traces (nahrávání source map při buildu)
+   stačí přidat `SENTRY_AUTH_TOKEN` (sentry.io → Settings → Auth Tokens,
+   scope `project:releases`). Slugy organizace a projektu
+   (`danielmitka`/`mitsov-web`) jsou předvyplněné v next.config.ts;
+   proměnné `SENTRY_ORG`/`SENTRY_PROJECT` je případně přebijí. Bez tokenu
+   vše funguje, jen jsou stack traces minifikované.
 
 Eventy z prohlížeče jdou přes vlastní doménu (`/monitoring`), takže projdou
 CSP i adblockery. Neposílají se IP adresy, cookies ani session replay —

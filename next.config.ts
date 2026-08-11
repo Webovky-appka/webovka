@@ -38,8 +38,10 @@ const nextConfig: NextConfig = {
 };
 
 export default withSentryConfig(nextConfig, {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
+  // Slugy nejsou tajemství (jsou vidět v adrese Sentry) — natvrdo tady,
+  // ať upload source map funguje hned, jak na Vercelu přibude auth token.
+  org: process.env.SENTRY_ORG ?? "danielmitka",
+  project: process.env.SENTRY_PROJECT ?? "mitsov-web",
   authToken: process.env.SENTRY_AUTH_TOKEN,
 
   /**
