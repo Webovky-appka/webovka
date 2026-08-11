@@ -1,5 +1,6 @@
 import { UserRole } from "@prisma/client";
 
+import { CalibrationPanel } from "@/components/settings/calibration-panel";
 import { GmailPanel } from "@/components/settings/gmail-panel";
 import { GoogleLinksForm } from "@/components/settings/google-links-form";
 import { LegalPanel } from "@/components/settings/legal-panel";
@@ -26,7 +27,7 @@ export default async function SettingsPage(props: {
   const currentUser = await requireUser();
   const { gmail } = await props.searchParams;
 
-  const [users, templates, account, studio] = await Promise.all([
+  const [users, templates, account, studio, rated] = await Promise.all([
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
       select: { id: true, name: true, email: true, role: true },
@@ -37,6 +38,20 @@ export default async function SettingsPage(props: {
     }),
     googleAccountFor(currentUser.id),
     prisma.studioProfile.findUnique({ where: { id: "studio" } }),
+    // Sbírka vzorů pro kalibraci auditu — od nejlepšího webu k nejhoršímu.
+    prisma.salesLead.findMany({
+      where: { humanWebScore: { not: null } },
+      orderBy: [{ humanWebScore: "desc" }, { updatedAt: "desc" }],
+      select: {
+        id: true,
+        humanWebScore: true,
+        humanWebNote: true,
+        websiteScore: true,
+        screenshotDesktopKey: true,
+        prospect: { select: { name: true, domain: true } },
+        campaign: { select: { name: true } },
+      },
+    }),
   ]);
 
   return (
@@ -121,6 +136,19 @@ export default async function SettingsPage(props: {
         </h2>
         <TaskTemplatePanel templates={templates} />
       </section>
+
+      <CalibrationPanel
+        items={rated.map((lead) => ({
+          leadId: lead.id,
+          companyName: lead.prospect.name,
+          domain: lead.prospect.domain,
+          humanWebScore: lead.humanWebScore ?? 0,
+          humanWebNote: lead.humanWebNote,
+          modelScore: lead.websiteScore,
+          hasScreenshot: lead.screenshotDesktopKey !== null,
+          campaignName: lead.campaign.name,
+        }))}
+      />
     </div>
   );
 }
