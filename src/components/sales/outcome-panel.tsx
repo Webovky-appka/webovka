@@ -5,10 +5,11 @@ import { useActionState, useState } from "react";
 import {
   foundProjectFromLead,
   setLeadOutcome,
+  undoEmailSent,
   type SalesFormState,
 } from "@/app/actions/sales";
 import { FormError } from "@/components/field";
-import { LOST_REASONS } from "@/lib/sales/funnel";
+import { canUndoSend, LOST_REASONS } from "@/lib/sales/funnel";
 
 /** Mezikroky po oslovení — volné přepínání oběma směry. */
 const STEPS: { value: string; label: string; hint: string }[] = [
@@ -49,6 +50,10 @@ export function OutcomePanel({
     SalesFormState,
     FormData
   >(foundProjectFromLead, undefined);
+  const [undone, undoAction, undoing] = useActionState<
+    SalesFormState,
+    FormData
+  >(undoEmailSent, undefined);
   const [losing, setLosing] = useState(false);
 
   return (
@@ -175,6 +180,34 @@ export function OutcomePanel({
           )}
         </form>
       </div>
+
+      {canUndoSend(status) ? (
+        <>
+          <hr className="border-slate-100" />
+          <form action={undoAction} className="space-y-1">
+            <input type="hidden" name="leadId" value={leadId} />
+            <button
+              type="submit"
+              disabled={undoing}
+              className="text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline disabled:opacity-60"
+            >
+              {undoing
+                ? "Vracím…"
+                : "↩ Označil jsem odesláno omylem — vrátit ke schválení"}
+            </button>
+            <p className="text-xs text-slate-400">
+              Vrátí návrh mezi rozpracované. Pokud e-mail skutečně odešel,
+              adresát ho má — tím ho neodvoláte.
+            </p>
+            <FormError message={undone?.error} />
+            {undone?.success ? (
+              <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {undone.success}
+              </p>
+            ) : null}
+          </form>
+        </>
+      ) : null}
     </section>
   );
 }

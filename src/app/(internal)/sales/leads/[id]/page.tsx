@@ -5,12 +5,14 @@ import { OutcomePanel } from "@/components/sales/outcome-panel";
 import { ReauditButton } from "@/components/sales/reaudit-button";
 import { ReopenButton } from "@/components/sales/reopen-button";
 import { RateWebsite } from "@/components/sales/rate-website";
+import { RescanButton } from "@/components/sales/rescan-button";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
 import { googleAccountFor } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
+import { canRescan } from "@/lib/sales/funnel";
 import {
   EVIDENCE_LABELS,
   isEvidenceKind,
@@ -97,6 +99,7 @@ export default async function LeadPage(props: {
     ["QUALIFIED", "RESEARCHING", "READY_FOR_REVIEW", "APPROVED"].includes(
       lead.status,
     );
+  const rescanAllowed = canRescan(lead.status);
   const audit = lead.audits[0] ?? null;
   const findings = (audit?.findings ?? {}) as Findings;
   const evidence = (findings.evidence ?? []).filter((item) =>
@@ -248,6 +251,13 @@ export default async function LeadPage(props: {
             </p>
           </div>
           <ReopenButton leadId={lead.id} />
+          {lead.status === "REJECTED" ? (
+            <p className="text-xs text-red-800/70">
+              Otevřením se rozjede kompletní proskenování a příležitost skončí
+              ke schválení. Práh kampaně se u ní pak už neuplatní — rozhodl jste
+              vy, ne skóre.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -451,7 +461,10 @@ export default async function LeadPage(props: {
                   : ""}
               </p>
             </div>
-            {canReaudit ? <ReauditButton leadId={lead.id} /> : null}
+            <div className="space-y-3 text-right">
+              {canReaudit ? <ReauditButton leadId={lead.id} /> : null}
+              {rescanAllowed ? <RescanButton leadId={lead.id} /> : null}
+            </div>
           </div>
 
           {audit.summary ? (
@@ -599,9 +612,17 @@ export default async function LeadPage(props: {
           <p>
             {noOwnWebsite
               ? "Vlastní web firmy se nenašel — audit se přeskakuje a e-mail nabízí stavbu prvního webu. Když ho Contact Research dodatečně objeví, příležitost se do auditu vrátí sama."
-              : "Audit zatím neproběhl. Provede se automaticky v běhu po kvalifikaci."}
+              : "Audit webu zatím neproběhl, takže tady nejsou ani snímky, ani zjištění."}
           </p>
-          {canReaudit ? (
+          {rescanAllowed ? (
+            <div className="flex justify-center text-left">
+              <RescanButton
+                leadId={lead.id}
+                label="Proskenovat a připravit e-mail"
+                prominent
+              />
+            </div>
+          ) : canReaudit ? (
             <div className="flex justify-center">
               <ReauditButton leadId={lead.id} />
             </div>

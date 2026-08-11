@@ -114,6 +114,34 @@ export function computeFunnel(counts: StatusCounts): Funnel {
   };
 }
 
+/**
+ * Stavy, ve kterých smí člověk pustit kompletní proskenování (audit,
+ * kontakty, research, koncept, návrh e-mailu). Po oslovení už ne — rescan
+ * zahazuje rozpracovaný návrh a u odeslaného e-mailu by přepsal historii.
+ */
+const RESCAN_STATUSES = new Set([
+  "DISCOVERED",
+  "QUALIFYING",
+  "QUALIFIED",
+  "RESEARCHING",
+  "READY_FOR_REVIEW",
+  "APPROVED",
+  "REJECTED",
+]);
+
+export function canRescan(status: string): boolean {
+  return RESCAN_STATUSES.has(status);
+}
+
+/**
+ * Odvolat odeslání jde jen z čerstvě oslovené příležitosti. U posunutých
+ * stavů (odpověděli, schůzka, nabídka) se nejdřív vrací výsledek na
+ * „Oslovená“, ať se nepřepisuje víc kroků jedním kliknutím.
+ */
+export function canUndoSend(status: string): boolean {
+  return status === "CONTACTED";
+}
+
 /** Důvody prohry podle sekce 29 specifikace. */
 export const LOST_REASONS = [
   "Příliš drahé",
