@@ -1,10 +1,13 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { NewCampaignForm } from "@/components/sales/new-campaign-form";
 import { CampaignStatusField } from "@/components/sales/campaign-status-field";
 import { requireUser } from "@/lib/auth";
 import { pluralCs } from "@/lib/format";
+import { toggleViewPref } from "@/app/actions/sales";
 import { prisma } from "@/lib/prisma";
+import { isPrefOn, SHOW_ARCHIVED_COOKIE } from "@/lib/sales/view-prefs";
 
 export const metadata = {
   title: "AI Sales — Mitsov Web",
@@ -17,8 +20,12 @@ export default async function SalesPage(props: {
   searchParams: Promise<{ archiv?: string }>;
 }) {
   await requireUser();
+  // Rozbalení drží cookie, takže se sekce po návratu nezavře; starý
+  // `?archiv=1` z rozeslaných odkazů dál funguje.
   const { archiv } = await props.searchParams;
-  const showArchived = archiv === "1";
+  const cookieStore = await cookies();
+  const showArchived =
+    archiv === "1" || isPrefOn(cookieStore.get(SHOW_ARCHIVED_COOKIE)?.value);
 
   const [campaigns, reviewQueue, reviewTotal] = await Promise.all([
     prisma.salesCampaign.findMany({
@@ -180,15 +187,18 @@ export default async function SalesPage(props: {
 
       {archivedCampaigns.length > 0 ? (
         <section className="space-y-3">
-          <Link
-            scroll={false}
-            href={showArchived ? "/sales" : "/sales?archiv=1"}
-            className="inline-block rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
-          >
-            {showArchived
-              ? "Skrýt archivované kampaně"
-              : `Archivované kampaně (${archivedCampaigns.length})`}
-          </Link>
+          <form action={toggleViewPref}>
+            <input type="hidden" name="pref" value={SHOW_ARCHIVED_COOKIE} />
+            <input type="hidden" name="path" value="/sales" />
+            <button
+              type="submit"
+              className="rounded-lg border border-slate-300 px-3.5 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+            >
+              {showArchived
+                ? "Skrýt archivované kampaně"
+                : `Archivované kampaně (${archivedCampaigns.length})`}
+            </button>
+          </form>
           {showArchived ? (
             <ul className="space-y-2 opacity-75">
               {archivedCampaigns.map((campaign) => (
@@ -228,7 +238,10 @@ function CampaignCard({ campaign }: { campaign: CampaignWithCounts }) {
             {campaign.mission}
           </p>
         </div>
-        <CampaignStatusField campaignId={campaign.id} status={campaign.status} />
+        <CampaignStatusField
+          campaignId={campaign.id}
+          status={campaign.status}
+        />
       </div>
 
       {campaign.leads.length > 0 && campaign.status !== "ARCHIVED" ? (
