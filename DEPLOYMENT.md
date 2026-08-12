@@ -141,6 +141,33 @@ adresa, fáze, nehotové úkoly a posledních pět zápisů z komunikace. Intern
 poznámka o klientovi se posílá jen po zaškrtnutí políčka. Před odesláním si lze
 podklady zobrazit tlačítkem Načíst podklady.
 
+### Které modely používají agenti AI Sales
+
+Každá úloha má vlastní model, aby se neplatilo silným modelem to, co zvládne
+slabý. Výchozí volby jsou v kódu (`src/lib/sales/model.ts`) a přebijí se
+proměnnou prostředí — po změně stačí redeploy, nic v kódu:
+
+| Úloha             | Proměnná               | Výchozí     |
+| ----------------- | ---------------------- | ----------- |
+| Hledání firem     | `SALES_MODEL_DISCOVER` | `gpt-4o`    |
+| Kvalifikace       | `SALES_MODEL_QUALIFY`  | `gpt-4o-mini` |
+| Audit webu        | `SALES_MODEL_AUDIT`    | `gpt-4o`    |
+| Kontakty a IČO    | `SALES_MODEL_CONTACT`  | `gpt-4o`    |
+| Company research  | `SALES_MODEL_RESEARCH` | `gpt-4o`    |
+| Text e-mailu      | `SALES_MODEL_OUTREACH` | `gpt-5.5`   |
+| Koncept homepage  | `SALES_MODEL_DESIGNER` | `gpt-5.5`   |
+
+E-mail a koncept čte člověk a rozhoduje podle nich o oslovení, proto tam jde
+nejsilnější model. Seznam modelů, které váš klíč umí, vypíše:
+
+```bash
+curl -s https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY" | grep -o '"id": "[^"]*"'
+```
+
+Ceník v `src/lib/sales/pricing.ts` zná sazby jen pro pár modelů; novější
+varianty se počítají podle své rodiny, což je přiznaný odhad. Kdo chce
+přesnou cenu v analytice, doplní sazbu tam.
+
 ## 4c. Odesílání z Gmailu (Google OAuth)
 
 Aby šel e-mail odeslat přímo z aplikace z vaší adresy, je potřeba vlastní OAuth

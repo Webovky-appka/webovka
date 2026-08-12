@@ -76,7 +76,10 @@ describe("podklady pro outreach", () => {
 
     expect(input).toContain("Jan Kohout");
     expect(input).toContain("Restaurace v Brně");
-    expect(input).toContain("Daniel Mitka, Mitsov Web");
+    // Podpis podle předlohy: rozloučení, jméno, studio — každé na svém řádku.
+    expect(input).toContain("S pozdravem");
+    expect(input).toContain("Daniel Mitka");
+    expect(input).toContain("Mitsov Web");
   });
 
   it("bez kontaktu řekne, ať se oslovuje obecně", () => {

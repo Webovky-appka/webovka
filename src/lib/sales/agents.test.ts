@@ -42,13 +42,27 @@ describe("ochranná pravidla v promptech", () => {
 
   it("outreach má zákaz vymýšlení, limit délky a jediný podpis", () => {
     expect(DEFAULT_PROMPTS.outreach).toContain("Nevymýšlej si fakta");
-    expect(DEFAULT_PROMPTS.outreach).toContain("120 až 180 slov");
-    expect(DEFAULT_PROMPTS.outreach).toContain("Podpis přesně jednou");
+    expect(DEFAULT_PROMPTS.outreach).toContain("120 až 170 slov");
+    expect(DEFAULT_PROMPTS.outreach).toContain("právě jednou a na konci");
     // Věta o odmítnutí je na přání uživatele pryč a nesmí se vrátit.
     expect(DEFAULT_PROMPTS.outreach).not.toContain("už se neozveme");
     expect(DEFAULT_PROMPTS.outreach).toContain(
-      "Žádnou větu o možnosti odmítnutí",
+      "Žádná věta o možnosti odmítnutí",
     );
+  });
+
+  /**
+   * Předloha e-mailu podle majitele studia: první osoba, nabídka ukázek
+   * (ne schůzky) a otázka na konec. Kdyby to z promptu vypadlo, e-maily se
+   * vrátí k obecné agenturní šabloně.
+   */
+  it("outreach drží předlohu majitele studia", () => {
+    expect(DEFAULT_PROMPTS.outreach).toContain("jsem narazil");
+    expect(DEFAULT_PROMPTS.outreach).toContain("Podíval jsem se také na Váš web");
+    expect(DEFAULT_PROMPTS.outreach).toContain("nezávazně pošlu několik ukázek");
+    expect(DEFAULT_PROMPTS.outreach).toContain("Měli byste zájem");
+    expect(DEFAULT_PROMPTS.outreach).toContain("ne schůzku ani telefonát");
+    expect(DEFAULT_PROMPTS.outreach).toContain("Žádné odrážky");
   });
 
   it("auditor odděluje pozorování od úsudku a netvrdí bez důkazu", () => {

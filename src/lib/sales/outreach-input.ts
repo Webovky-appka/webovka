@@ -159,11 +159,12 @@ export function buildOutreachInput(facts: OutreachFacts): string {
     // Vzory až za fakty: model si nejdřív načte, co o firmě smí tvrdit,
     // a teprve pak dostane ukázku, jak to má znít.
     ...buildSampleBlock(facts.samples),
-    // Když odesílá „Mitsov Web" (fallback bez jména), nesmí vzniknout
-    // zdvojení „Mitsov Web, Mitsov Web" v podpisu.
+    // Podpis přesně podle předlohy majitele studia: rozloučení, jméno, studio.
+    // Bez jména (fallback) zůstane jen studio, ať nevznikne „Mitsov Web,
+    // Mitsov Web".
     facts.senderName === "Mitsov Web"
-      ? "Podepiš: Mitsov Web"
-      : `Podepiš: ${facts.senderName}, Mitsov Web`,
+      ? "Podepiš přesně takto, na dva řádky: „S pozdravem“ / „Mitsov Web“."
+      : `Podepiš přesně takto, na tři řádky: „S pozdravem“ / „${facts.senderName}“ / „Mitsov Web“.`,
     "Vyber strategii hooku: visual / observation / business — podle toho, co máš v ruce.",
   ].join("\n");
 }

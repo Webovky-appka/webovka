@@ -14,7 +14,6 @@ export type CampaignSettings = {
   geography: string | null;
   dailyLimit: number;
   minScore: number;
-  schedule: string;
 };
 
 function NumberField({
@@ -91,27 +90,6 @@ export function CampaignSettingsForm({ campaign }: { campaign: CampaignSettings 
           defaultValue={campaign.minScore}
           hint="Příležitost pod tímto skóre se rovnou zamítne."
         />
-        <div className="space-y-1.5">
-          <label
-            htmlFor="schedule"
-            className="block text-sm font-medium text-slate-700"
-          >
-            Automatické spouštění
-          </label>
-          <select
-            id="schedule"
-            name="schedule"
-            defaultValue={campaign.schedule}
-            className={`${inputClasses} max-w-56`}
-          >
-            <option value="NONE">Jen ručně</option>
-            <option value="WEEKDAYS">Každý pracovní den ráno</option>
-            <option value="DAILY">Každý den ráno</option>
-          </select>
-          <p className="text-xs text-slate-500">
-            Běh startuje kolem 8:00. Ráno pak čekají příležitosti ke schválení.
-          </p>
-        </div>
       </div>
 
       <FormError message={state?.error} />
