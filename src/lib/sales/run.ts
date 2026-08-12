@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auditLead } from "@/lib/sales/auditor";
 import { researchContact } from "@/lib/sales/contact";
+import { salesConfig } from "@/lib/sales/config";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { designLead, MOCKUP_MIN_SCORE } from "@/lib/sales/designer";
 import { draftOutreach } from "@/lib/sales/outreach";
@@ -237,6 +238,12 @@ async function pendingDesignIds(
   stats: RunStats,
   campaignId: string,
 ): Promise<string[]> {
+  // Vypnutý Designer = fáze neexistuje. Nelosuje se ani varianta experimentu,
+  // aby se do kontrolní skupiny nedostaly příležitosti, které o koncept
+  // nepřišly kvůli losu, ale kvůli vypnutému agentovi.
+  const { designerEnabled } = await salesConfig();
+  if (!designerEnabled) return [];
+
   const waiting = await stageLeads(campaignId);
   return waiting.filter((lead) => designWaiting(stats, lead)).map((l) => l.id);
 }
@@ -251,10 +258,13 @@ async function pendingOutreachIds(
   campaignId: string,
 ): Promise<string[]> {
   const waiting = await stageLeads(campaignId);
+  const { designerEnabled } = await salesConfig();
 
   return waiting
     .filter(
-      (lead) => researchSettled(stats, lead) && !designWaiting(stats, lead),
+      (lead) =>
+        researchSettled(stats, lead) &&
+        (!designerEnabled || !designWaiting(stats, lead)),
     )
     .map((lead) => lead.id)
     .filter((id) => (stats.outreachAttempts[id] ?? 0) < MAX_ATTEMPTS);

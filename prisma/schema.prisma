@@ -705,6 +705,18 @@ model AgentRun {
 
 /// Verze system promptů agentů (sekce 19). Aktivní je nejvýš jedna na agenta,
 /// staré verze se nemažou — běhy na ně odkazují.
+/**
+ * Globální nastavení AI Sales. Jeden řádek s pevným id, stejně jako
+ * StudioProfile — přepínače, které platí napříč kampaněmi.
+ */
+model SalesConfig {
+  id              String   @id @default("sales")
+  /// Vypnutý Designer negeneruje koncepty homepage a nekazí experiment:
+  /// varianta se u nových příležitostí vůbec nelosuje.
+  designerEnabled Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
 /// Vzorový e-mail od majitele studia: takhle chce, aby Outreach psal.
 /// Model z něj bere tón, stavbu a délku — nikdy fakta o cizí firmě.
 model SalesEmailSample {

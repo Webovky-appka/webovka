@@ -15,6 +15,7 @@ import { googleAccountFor } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
 import { canRescan } from "@/lib/sales/funnel";
+import { SCORE_FORMULA_HINT } from "@/lib/sales/score";
 import {
   EVIDENCE_LABELS,
   isEvidenceKind,
@@ -208,6 +209,16 @@ export default async function LeadPage(props: {
             </dd>
           </div>
         </dl>
+        <p className="mt-3 text-xs text-slate-500">
+          {lead.businessScore !== null && lead.websiteScore !== null ? (
+            <>
+              Skóre {lead.score ?? "—"} = síla firmy {lead.businessScore} × (100
+              − kvalita webu {lead.websiteScore}) / 100, přepočtené do obvyklého
+              rozsahu.{" "}
+            </>
+          ) : null}
+          {SCORE_FORMULA_HINT}
+        </p>
       </section>
 
       {researchHooks.length > 0 ? (

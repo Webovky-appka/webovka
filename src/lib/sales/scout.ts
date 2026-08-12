@@ -12,6 +12,7 @@ import {
 import { fetchSiteSummary } from "@/lib/sales/fetch-site";
 import { callAgentModel } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
+import { opportunityScore } from "@/lib/sales/score";
 
 /**
  * Scout ve dvou levných krocích (sekce 7.1 specifikace): broad search přes
@@ -72,7 +73,6 @@ const DISCOVER_JSON_SCHEMA = {
 const QualifySchema = z.object({
   businessScore: z.number().int().min(0).max(100),
   websiteScore: z.number().int().min(0).max(100),
-  score: z.number().int().min(0).max(100),
   reason: z.string(),
   summary: z.string(),
   confidence: z.number().min(0).max(1),
@@ -81,14 +81,7 @@ const QualifySchema = z.object({
 const QUALIFY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "businessScore",
-    "websiteScore",
-    "score",
-    "reason",
-    "summary",
-    "confidence",
-  ],
+  required: ["businessScore", "websiteScore", "reason", "summary", "confidence"],
   properties: {
     businessScore: {
       type: "integer",
@@ -97,10 +90,6 @@ const QUALIFY_JSON_SCHEMA = {
     websiteScore: {
       type: "integer",
       description: "Kvalita současného webu 0–100 (vyšší = lepší web)",
-    },
-    score: {
-      type: "integer",
-      description: "Celkové skóre obchodní příležitosti 0–100",
     },
     reason: {
       type: "string",
@@ -327,10 +316,12 @@ export async function qualifyLead(options: {
           ].join("\n")
         : "Web se nepodařilo načíst — hodnoť s nižší confidence a napiš to do reason.",
     "",
-    "Oboduj: businessScore = síla a věrohodnost firmy, websiteScore = kvalita",
-    "současného webu (vyšší číslo znamená lepší web), score = celková obchodní",
-    "příležitost. Nejlepší příležitost je silná firma se slabým webem — nebo",
-    "úplně bez něj.",
+    "Oboduj DVĚ věci nezávisle na sobě, celkové skóre počítáme sami:",
+    "- businessScore = síla a věrohodnost firmy (reputace, provoz, rozpočet).",
+    "- websiteScore = kvalita současného webu, vyšší číslo znamená LEPŠÍ web.",
+    "Neřeš, jak dobrá je to příležitost — to vyjde ze vzorce. Hodnoť poctivě:",
+    "nadsazený websiteScore u hezkého webu ho vyřadí, podstřelený u ošklivého",
+    "ho pošle do oslovení.",
   ].join("\n");
 
   const result = await callAgentModel({
@@ -349,7 +340,12 @@ export async function qualifyLead(options: {
 
   if (!result.ok) return { ok: false, error: result.error };
 
-  const { score, businessScore, websiteScore, reason, confidence } = result.data;
+  const { businessScore, websiteScore, reason, confidence } = result.data;
+  // Skóre je vzorec, ne dojem modelu (viz score.ts).
+  const score = opportunityScore({
+    businessStrength: businessScore,
+    websiteQuality: websiteScore,
+  });
 
   const belowThreshold = score < campaign.minScore;
   const overLimit = !belowThreshold && qualifiedSoFar >= campaign.dailyLimit;
