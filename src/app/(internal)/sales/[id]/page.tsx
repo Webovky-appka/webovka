@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 
 import { CampaignScheduleField } from "@/components/sales/campaign-schedule-field";
 import { CampaignSettingsForm } from "@/components/sales/campaign-settings-form";
+import { DesignerSwitch } from "@/components/sales/designer-switch";
 import { CampaignStatusField } from "@/components/sales/campaign-status-field";
 import { PromptEditor } from "@/components/sales/prompt-editor";
 import { StartRunForm } from "@/components/sales/start-run-form";
 import { requireUser } from "@/lib/auth";
 import { formatDateTime, pluralCs } from "@/lib/format";
 import { AGENT_INFO, SALES_AGENTS } from "@/lib/sales/agents";
+import { salesConfig } from "@/lib/sales/config";
 import { getActivePrompt } from "@/lib/sales/prompts";
 import { toggleViewPref } from "@/app/actions/sales";
 import { prisma } from "@/lib/prisma";
@@ -118,6 +120,8 @@ export default async function CampaignPage(props: {
   const hasLiveRun = campaign.runs.some(
     (run) => run.status === "QUEUED" || run.status === "RUNNING",
   );
+
+  const config = await salesConfig();
 
   const prompts = await Promise.all(
     SALES_AGENTS.map(async (agent) => ({
@@ -391,6 +395,12 @@ export default async function CampaignPage(props: {
                   {AGENT_INFO[agent].role}
                 </p>
               </div>
+              {agent === "designer" ? (
+                <DesignerSwitch
+                  enabled={config.designerEnabled}
+                  campaignId={campaign.id}
+                />
+              ) : null}
               <PromptEditor
                 agent={agent}
                 agentName={AGENT_INFO[agent].name}

@@ -153,6 +153,25 @@ export async function setCampaignStatus(formData: FormData) {
   revalidatePath(`/sales/${campaignId}`);
 }
 
+/**
+ * Zapnutí a vypnutí Designera. Platí globálně a ukládá se hned — vypnutý
+ * agent nic negeneruje a příležitosti jdou z researche rovnou na e-mail.
+ */
+export async function setDesignerEnabled(formData: FormData) {
+  await requireUser();
+
+  const enabled = String(formData.get("enabled")) === "1";
+  await prisma.salesConfig.upsert({
+    where: { id: "sales" },
+    create: { id: "sales", designerEnabled: enabled },
+    update: { designerEnabled: enabled },
+  });
+
+  revalidatePath("/sales");
+  const campaignId = String(formData.get("campaignId") ?? "");
+  if (campaignId) revalidatePath(`/sales/${campaignId}`);
+}
+
 /** Automatické spouštění se ukládá hned při přepnutí, jako stav kampaně. */
 export async function setCampaignSchedule(formData: FormData) {
   await requireUser();

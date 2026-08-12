@@ -10,6 +10,7 @@ import { fetchAuditContent } from "@/lib/sales/fetch-site";
 import { gradeFor, pickCalibrationExamples } from "@/lib/sales/human-grades";
 import { callAgentModel, type AgentImage } from "@/lib/sales/model";
 import { getActivePrompt } from "@/lib/sales/prompts";
+import { opportunityScore } from "@/lib/sales/score";
 import { captureAndStore, salesScreenshotKey } from "@/lib/sales/screenshot";
 import { VISUAL_DIMENSIONS } from "@/lib/sales/visual";
 import { readFile } from "@/lib/storage";
@@ -52,7 +53,7 @@ const AuditSchema = z.object({
   mobileScore: z.number().int().min(0).max(100),
   conversionScore: z.number().int().min(0).max(100),
   seoScore: z.number().int().min(0).max(100),
-  finalScore: z.number().int().min(0).max(100),
+
   strengths: z.array(z.string()),
   problems: z.array(ProblemSchema),
   opportunities: z.array(z.string()),
@@ -80,7 +81,6 @@ const AUDIT_JSON_SCHEMA = {
     "mobileScore",
     "conversionScore",
     "seoScore",
-    "finalScore",
     "strengths",
     "problems",
     "opportunities",
@@ -117,11 +117,6 @@ const AUDIT_JSON_SCHEMA = {
       description: "CTA a konverzní cesta 0–100",
     },
     seoScore: { type: "integer", description: "Základní SEO 0–100" },
-    finalScore: {
-      type: "integer",
-      description:
-        "Výsledné skóre obchodní příležitosti 0–100 podle rubriky — vyšší = lepší lead pro redesign",
-    },
     strengths: { type: "array", items: { type: "string" } },
     problems: {
       type: "array",
@@ -336,8 +331,9 @@ export async function auditLead(options: {
     "- 70–84: solidní web, jen drobnosti. Redesign se těžko obhajuje.",
     "- 50–69: průměr se zjevnými slabinami, redesign má smysl.",
     "- 0–49: zastaralý nebo rozbitý web, redesign je jasný přínos.",
-    "- Neschovávej se do středu škály. Hezký web dostane vysoký vizuál a NÍZKÉ finalScore — falešně nízké hodnocení znamená spam dobré firmě a ostudu studia.",
-    `- finalScore je obchodní příležitost pro redesign v kontextu mise: ${campaign.mission}. Čím lepší web, tím NIŽŠÍ finalScore.`,
+    "- Neschovávej se do středu škály. Hezký web dostane vysoký vizuál — falešně nízké hodnocení znamená spam dobré firmě a ostudu studia.",
+    "- Celkové skóre příležitosti NEHODNOTÍŠ, počítá se vzorcem ze síly firmy a kvality webu.",
+    `- Tvoje jediná odpovědnost je poctivá kvalita webu v kontextu mise: ${campaign.mission}.`,
     ...(calibrationNotes.length > 0
       ? [
           "",
@@ -388,12 +384,17 @@ export async function auditLead(options: {
     },
   });
 
-  // Audit zpřesňuje skóre příležitosti — finální hodnota přepisuje kvalifikaci
-  // (sekce 15 specky: „Auditor completed — Final score“).
+  // Audit zpřesňuje kvalitu webu, skóre příležitosti se z ní přepočítá
+  // vzorcem (score.ts) — model do celkového čísla nemluví.
+  const finalScore = opportunityScore({
+    businessStrength: lead.businessScore ?? 50,
+    websiteQuality: audit.visualScore,
+  });
+
   await prisma.salesLead.update({
     where: { id: leadId },
     data: {
-      score: audit.finalScore,
+      score: finalScore,
       websiteScore: audit.visualScore,
       opportunityGap:
         lead.businessScore !== null
@@ -408,10 +409,10 @@ export async function auditLead(options: {
       leadId,
       actor: "auditor",
       kind: "audited",
-      body: `Audit dokončen — výsledné skóre ${audit.finalScore}. ${audit.summary}`,
+      body: `Audit dokončen — kvalita webu ${audit.visualScore}/100, skóre příležitosti ${finalScore}. ${audit.summary}`,
       meta: { runId, confidence: audit.confidence, screenshots: Boolean(shots) },
     },
   });
 
-  return { ok: true, finalScore: audit.finalScore };
+  return { ok: true, finalScore };
 }
