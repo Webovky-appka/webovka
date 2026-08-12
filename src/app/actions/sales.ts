@@ -8,6 +8,7 @@ import * as z from "zod";
 
 import { isAiConfigured } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
+import { formatDate } from "@/lib/format";
 import { sendGmail } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSalesAgent } from "@/lib/sales/agents";
@@ -466,7 +467,7 @@ export async function approveAndSendEmail(
   await upsertRecipient(draft.lead.prospectId, parsed.data.to);
   await prisma.salesLead.update({
     where: { id: draft.leadId },
-    data: { status: "CONTACTED" },
+    data: { status: "CONTACTED", scheduledFor: null },
   });
   await prisma.salesActivity.create({
     data: {
@@ -481,6 +482,130 @@ export async function approveAndSendEmail(
   revalidatePath(`/sales/leads/${draft.leadId}`);
   revalidatePath(`/sales/${draft.lead.campaignId}`);
   return { success: `Odesláno na ${parsed.data.to}. Lead je ve stavu Osloven.` };
+}
+
+/**
+ * Dvě mezizastávky před odesláním, aby rozpracovaný e-mail nezůstal jen
+ * ve frontě ke schválení: text je odsouhlasený („Koncept připraven“), nebo
+ * má rovnou termín odeslání („Naplánováno“). Návrh v obou případech zůstává
+ * rozpracovaný, takže se dá dál upravovat i odeslat.
+ */
+export async function markDraftReady(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const draft = await loadDraft(draftId);
+  if (!draft || draft.status !== "DRAFT") {
+    return { error: "Návrh nenalezen, nebo už byl vyřízen." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: draft.leadId },
+    data: { status: "APPROVED", scheduledFor: null },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.leadId,
+      actor: "user",
+      kind: "approved",
+      body: `${user.name} označil koncept jako připravený k odeslání.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  revalidatePath(`/sales/${draft.lead.campaignId}`);
+  revalidatePath("/sales");
+  revalidatePath("/projects");
+  return {
+    success:
+      "Koncept je připravený. Najdete ho v Zakázkách mezi rozjednanými akvizicemi.",
+  };
+}
+
+export async function scheduleDraft(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const rawDate = String(formData.get("scheduledFor") ?? "").trim();
+  if (rawDate === "") return { error: "Vyberte den, kdy má e-mail odejít." };
+
+  // Z inputu typu date přijde YYYY-MM-DD; bereme celý den, ne konkrétní čas.
+  const scheduledFor = new Date(`${rawDate}T09:00:00`);
+  if (Number.isNaN(scheduledFor.getTime())) {
+    return { error: "Neplatné datum." };
+  }
+
+  const draft = await loadDraft(draftId);
+  if (!draft || draft.status !== "DRAFT") {
+    return { error: "Návrh nenalezen, nebo už byl vyřízen." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: draft.leadId },
+    data: { status: "SCHEDULED", scheduledFor },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.leadId,
+      actor: "user",
+      kind: "scheduled",
+      body: `${user.name} naplánoval odeslání na ${formatDate(scheduledFor)}. Odeslat je pořád potřeba ručně — aplikace cold e-maily sama neposílá.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  revalidatePath(`/sales/${draft.lead.campaignId}`);
+  revalidatePath("/sales");
+  revalidatePath("/projects");
+  return {
+    success: `Naplánováno na ${formatDate(scheduledFor)}. V Zakázkách to uvidíte mezi rozjednanými akvizicemi; odeslání zůstává na vás.`,
+  };
+}
+
+/** Vrátí naplánovaný nebo připravený návrh zpět do fronty ke schválení. */
+export async function unscheduleDraft(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, status: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if (lead.status !== "APPROVED" && lead.status !== "SCHEDULED") {
+    return { error: "Vrátit jde jen připravený nebo naplánovaný návrh." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { status: "READY_FOR_REVIEW", scheduledFor: null },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "draft",
+      body: `${user.name} vrátil návrh zpět ke schválení.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  revalidatePath("/sales");
+  revalidatePath("/projects");
+  return { success: "Návrh je zpět ve frontě ke schválení." };
 }
 
 /** Označí e-mail za odeslaný bez odeslání — když odešel jinou cestou. */
@@ -503,7 +628,7 @@ export async function markEmailSentManually(
   });
   await prisma.salesLead.update({
     where: { id: draft.leadId },
-    data: { status: "CONTACTED" },
+    data: { status: "CONTACTED", scheduledFor: null },
   });
   await prisma.salesActivity.create({
     data: {

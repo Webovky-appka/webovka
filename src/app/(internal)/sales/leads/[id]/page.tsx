@@ -37,7 +37,8 @@ const STATUS_LABELS: Record<string, string> = {
   QUALIFIED: "Kvalifikovaný",
   RESEARCHING: "Doplňuje se research",
   READY_FOR_REVIEW: "Ke schválení",
-  APPROVED: "Schválený",
+  APPROVED: "Koncept připraven",
+  SCHEDULED: "Naplánováno k odeslání",
   CONTACTED: "Osloven",
   REPLIED: "Odpověděl",
   MEETING: "Schůzka",
@@ -426,6 +427,8 @@ export default async function LeadPage(props: {
             createdAt: revision.createdAt,
           }))}
           leadId={lead.id}
+          leadStatus={lead.status}
+          scheduledFor={lead.scheduledFor}
           defaultTo={primaryContact?.email ?? ""}
           gmailAddress={gmailAccount?.email ?? null}
         />
