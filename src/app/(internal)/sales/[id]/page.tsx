@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { CampaignScheduleField } from "@/components/sales/campaign-schedule-field";
 import { CampaignSettingsForm } from "@/components/sales/campaign-settings-form";
 import { CampaignStatusField } from "@/components/sales/campaign-status-field";
 import { PromptEditor } from "@/components/sales/prompt-editor";
@@ -307,8 +308,14 @@ export default async function CampaignPage(props: {
               geography: campaign.geography,
               dailyLimit: campaign.dailyLimit,
               minScore: campaign.minScore,
-              schedule: campaign.schedule,
             }}
+          />
+
+          <hr className="border-slate-100" />
+
+          <CampaignScheduleField
+            campaignId={campaign.id}
+            schedule={campaign.schedule}
           />
         </section>
 
@@ -340,8 +347,12 @@ export default async function CampaignPage(props: {
                     href={`/sales/runs/${run.id}`}
                     className="flex flex-wrap justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100"
                   >
-                    <span className="text-slate-700">
-                      {RUN_LABELS[run.status] ?? run.status}
+                    <span className="min-w-0 text-slate-700">
+                      {run.label ?? "Běh kampaně"}
+                      <span className="text-slate-400">
+                        {" · "}
+                        {RUN_LABELS[run.status] ?? run.status}
+                      </span>
                     </span>
                     <span className="text-xs text-slate-500">
                       {formatDateTime(run.createdAt)}

@@ -206,6 +206,7 @@ export async function refineDraft(options: {
   draftId: string;
   instruction: string;
   userName: string;
+  userId?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const draft = await prisma.salesEmailDraft.findUnique({
     where: { id: options.draftId },
@@ -258,6 +259,18 @@ export async function refineDraft(options: {
     leadId: draft.lead.id,
   });
   if (!result.ok) return { ok: false, error: result.error };
+
+  // Verze PŘED úpravou se schová i s pokynem, který ji vystřídal — z toho
+  // je pak historie a tlačítko Zpět.
+  await prisma.salesEmailRevision.create({
+    data: {
+      draftId: draft.id,
+      subject: draft.subject,
+      body: draft.body,
+      instruction: options.instruction,
+      createdById: options.userId ?? null,
+    },
+  });
 
   await prisma.salesEmailDraft.update({
     where: { id: draft.id },

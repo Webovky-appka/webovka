@@ -71,6 +71,7 @@ model User {
   salesEmailApprovals SalesEmailDraft[]
   salesPromptVersions SalesPromptVersion[]
   salesEmailSamples   SalesEmailSample[]
+  salesEmailRevisions SalesEmailRevision[]
 }
 
 /**
@@ -600,9 +601,30 @@ model SalesEmailDraft {
   lead          SalesLead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
   promptVersion SalesPromptVersion? @relation(fields: [promptVersionId], references: [id], onDelete: SetNull)
   approvedBy    User?               @relation(fields: [approvedById], references: [id], onDelete: SetNull)
+  revisions     SalesEmailRevision[]
 
   @@index([leadId])
   @@index([status])
+}
+
+/**
+ * Předchozí verze návrhu e-mailu. Ukládá se stav PŘED každou úpravou, takže
+ * „Zpět“ je návrat o krok a seznam pokynů je historie toho, co se zkoušelo.
+ */
+model SalesEmailRevision {
+  id          String   @id @default(cuid())
+  draftId     String
+  subject     String
+  body        String
+  /// Pokyn, který tuhle verzi vystřídal. NULL u ruční úpravy.
+  instruction String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  draft     SalesEmailDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([draftId, createdAt])
 }
 
 /// Timeline firmy i leadu — CRM paměť, work log agentů a doklad v jednom
@@ -630,6 +652,10 @@ model SalesRun {
   id         String         @id @default(cuid())
   campaignId String
   status     SalesRunStatus @default(QUEUED)
+  /// Čím ten běh je, lidsky: „Běh kampaně“, „Sken webu — Pension Alva“.
+  /// Bez něj byly v seznamu jen data a stavy a nikdo nepoznal, co která
+  /// položka dělala. Prázdné u běhů založených před touhle změnou.
+  label      String?
   stats      Json?
   error      String?
   /// Rezervace pro právě probíhající tick. Dva souběžné ticky (řetěz +

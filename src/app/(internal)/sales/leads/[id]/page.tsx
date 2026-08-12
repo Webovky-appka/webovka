@@ -79,7 +79,11 @@ export default async function LeadPage(props: {
       prospect: { include: { contacts: { orderBy: { isPrimary: "desc" } } } },
       campaign: { select: { id: true, name: true, minScore: true } },
       audits: { orderBy: { createdAt: "desc" }, take: 1 },
-      emails: { orderBy: { createdAt: "desc" }, take: 1 },
+      emails: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { revisions: { orderBy: { createdAt: "desc" }, take: 10 } },
+      },
       activities: { orderBy: { createdAt: "desc" }, take: 50 },
     },
   });
@@ -405,6 +409,11 @@ export default async function LeadPage(props: {
             body: draft.body,
             strategy: draft.strategy,
           }}
+          revisions={draft.revisions.map((revision) => ({
+            id: revision.id,
+            instruction: revision.instruction,
+            createdAt: revision.createdAt,
+          }))}
           leadId={lead.id}
           defaultTo={primaryContact?.email ?? ""}
           gmailAddress={gmailAccount?.email ?? null}

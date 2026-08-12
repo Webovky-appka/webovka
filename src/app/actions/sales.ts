@@ -1,6 +1,6 @@
 "use server";
 
-import { Prisma, SalesCampaignStatus } from "@prisma/client";
+import { Prisma, SalesCampaignStatus, SalesSchedule } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -111,7 +111,12 @@ export async function updateCampaign(
     return { error: "Chybí identifikátor kampaně." };
   }
 
-  const parsed = CampaignSchema.safeParse(readCampaign(formData));
+  // Bez schedule: to má vlastní pole s okamžitým ukládáním. Kdyby zůstalo
+  // v tomhle schématu, uložení nastavení by ho přepsalo na „Jen ručně“,
+  // protože formulář ho už neposílá.
+  const parsed = CampaignSchema.omit({ schedule: true }).safeParse(
+    readCampaign(formData),
+  );
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Neplatný vstup." };
   }
@@ -142,6 +147,26 @@ export async function setCampaignStatus(formData: FormData) {
   await prisma.salesCampaign.update({
     where: { id: campaignId },
     data: { status: validStatus },
+  });
+
+  revalidatePath("/sales");
+  revalidatePath(`/sales/${campaignId}`);
+}
+
+/** Automatické spouštění se ukládá hned při přepnutí, jako stav kampaně. */
+export async function setCampaignSchedule(formData: FormData) {
+  await requireUser();
+
+  const campaignId = formData.get("campaignId");
+  const schedule = Object.values(SalesSchedule).find(
+    (value) => value === formData.get("schedule"),
+  );
+  if (typeof campaignId !== "string" || campaignId === "") return;
+  if (!schedule) return;
+
+  await prisma.salesCampaign.update({
+    where: { id: campaignId },
+    data: { schedule },
   });
 
   revalidatePath("/sales");
@@ -250,7 +275,7 @@ export async function startRun(
   }
 
   const run = await prisma.salesRun.create({
-    data: { campaignId },
+    data: { campaignId, label: "Běh kampaně — hledání nových firem" },
     select: { id: true },
   });
 
@@ -321,7 +346,7 @@ export async function saveEmailDraft(
   _prevState: SalesFormState,
   formData: FormData,
 ): Promise<SalesFormState> {
-  await requireUser();
+  const user = await requireUser();
 
   const draftId = String(formData.get("draftId") ?? "");
   const parsed = EmailFieldsSchema.safeParse({
@@ -336,6 +361,19 @@ export async function saveEmailDraft(
   const draft = await loadDraft(draftId);
   if (!draft || draft.status !== "DRAFT") {
     return { error: "Návrh nenalezen, nebo už není rozpracovaný." };
+  }
+
+  // I ruční úprava jde do historie, jinak by tlačítko Zpět po ní skočilo
+  // o dva kroky dozadu a vypadalo by rozbitě.
+  if (draft.subject !== parsed.data.subject || draft.body !== parsed.data.body) {
+    await prisma.salesEmailRevision.create({
+      data: {
+        draftId,
+        subject: draft.subject,
+        body: draft.body,
+        createdById: user.id,
+      },
+    });
   }
 
   await prisma.salesEmailDraft.update({
@@ -463,6 +501,57 @@ export async function markEmailSentManually(
   return { success: "Označeno jako odeslané. Příležitost je ve stavu Oslovená." };
 }
 
+/**
+ * Vrátí návrh o krok zpět: obnoví poslední uloženou verzi a tu z historie
+ * odebere. Historie je zásobník, takže opakovaným klikáním se dá jít dál
+ * do minulosti — až k původnímu textu od agenta.
+ */
+export async function undoDraftRevision(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const draftId = String(formData.get("draftId") ?? "");
+  const draft = await prisma.salesEmailDraft.findUnique({
+    where: { id: draftId },
+    select: {
+      id: true,
+      status: true,
+      subject: true,
+      body: true,
+      leadId: true,
+      lead: { select: { campaignId: true, prospectId: true } },
+      revisions: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+  if (!draft) return { error: "Návrh nenalezen." };
+  if (draft.status !== "DRAFT") {
+    return { error: "Vracet jde jen neodeslaný návrh." };
+  }
+
+  const previous = draft.revisions[0];
+  if (!previous) return { error: "Není kam se vrátit, tohle je první verze." };
+
+  await prisma.salesEmailDraft.update({
+    where: { id: draft.id },
+    data: { subject: previous.subject, body: previous.body },
+  });
+  await prisma.salesEmailRevision.delete({ where: { id: previous.id } });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: draft.lead.prospectId,
+      leadId: draft.leadId,
+      actor: "user",
+      kind: "draft",
+      body: `${user.name} vrátil návrh o krok zpět${previous.instruction ? ` — zahodil úpravu „${previous.instruction.slice(0, 120)}“` : " na verzi před ruční úpravou"}.`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${draft.leadId}`);
+  return { success: "Návrh je zpět v předchozí verzi." };
+}
+
 /** Zamítnutí leadu při review. Důvod se ukládá — Coach z něj bude jednou žít. */
 export async function rejectLead(
   _prevState: SalesFormState,
@@ -538,7 +627,10 @@ async function resetLeadForRescan(leadId: string): Promise<void> {
  * kampaň, takže rozjetý běh práci převezme sám; jinak se založí nový
  * s přeskočeným hledáním kandidátů — nové firmy hledat nechceme.
  */
-async function ensureRescanRun(campaignId: string): Promise<string> {
+async function ensureRescanRun(
+  campaignId: string,
+  companyName: string,
+): Promise<string> {
   const running = await prisma.salesRun.findFirst({
     where: { campaignId, status: { in: ["QUEUED", "RUNNING"] } },
     select: { id: true },
@@ -546,7 +638,11 @@ async function ensureRescanRun(campaignId: string): Promise<string> {
   if (running) return running.id;
 
   const run = await prisma.salesRun.create({
-    data: { campaignId, stats: { discovered: true } },
+    data: {
+      campaignId,
+      label: `Sken webu — ${companyName}`,
+      stats: { discovered: true },
+    },
     select: { id: true },
   });
   return run.id;
@@ -569,7 +665,13 @@ export async function rescanLead(
   const leadId = String(formData.get("leadId") ?? "");
   const lead = await prisma.salesLead.findUnique({
     where: { id: leadId },
-    select: { id: true, prospectId: true, campaignId: true, status: true },
+    select: {
+      id: true,
+      prospectId: true,
+      campaignId: true,
+      status: true,
+      prospect: { select: { name: true } },
+    },
   });
   if (!lead) return { error: "Příležitost nenalezena." };
   if (!canRescan(lead.status)) {
@@ -579,7 +681,7 @@ export async function rescanLead(
   }
 
   await resetLeadForRescan(leadId);
-  const runId = await ensureRescanRun(lead.campaignId);
+  const runId = await ensureRescanRun(lead.campaignId, lead.prospect.name);
 
   await prisma.salesActivity.create({
     data: {
@@ -687,6 +789,7 @@ export async function reopenLead(
     where: { id: leadId },
     include: {
       emails: { orderBy: { createdAt: "desc" }, take: 1 },
+      prospect: { select: { name: true } },
       _count: { select: { audits: true } },
     },
   });
@@ -777,7 +880,7 @@ export async function reopenLead(
   }
 
   await resetLeadForRescan(leadId);
-  const runId = await ensureRescanRun(lead.campaignId);
+  const runId = await ensureRescanRun(lead.campaignId, lead.prospect.name);
   await prisma.salesActivity.create({
     data: {
       prospectId: lead.prospectId,
@@ -1256,6 +1359,7 @@ export async function refineEmailDraft(
     draftId,
     instruction,
     userName: user.name,
+    userId: user.id,
   });
   if (!outcome.ok) return { error: outcome.error };
 

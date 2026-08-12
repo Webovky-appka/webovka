@@ -8,11 +8,16 @@ import {
   refineEmailDraft,
   rejectLead,
   saveEmailDraft,
+  undoDraftRevision,
   type SalesFormState,
 } from "@/app/actions/sales";
+import { formatDateTime } from "@/lib/format";
 import { MAX_INSTRUCTION_CHARS } from "@/lib/sales/outreach-input";
 import { Field, FormError, inputClasses } from "@/components/field";
-import { STRATEGY_LABELS, isOutreachStrategy } from "@/lib/sales/outreach-input";
+import {
+  STRATEGY_LABELS,
+  isOutreachStrategy,
+} from "@/lib/sales/outreach-input";
 
 const primaryButton =
   "rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-60";
@@ -24,17 +29,30 @@ const secondaryButton =
  * e-mail odchází — a vždy až po kliknutí člověka. Odesílá se přesně to,
  * co je v políčkách.
  */
+export type DraftRevision = {
+  id: string;
+  instruction: string | null;
+  createdAt: Date;
+};
+
 export function ReviewPanel({
   draft,
+  revisions,
   leadId,
   defaultTo,
   gmailAddress,
 }: {
   draft: { id: string; subject: string; body: string; strategy: string | null };
+  /** Historie od nejnovější — první je ta, na kterou vrátí tlačítko Zpět. */
+  revisions: DraftRevision[];
   leadId: string;
   defaultTo: string;
   gmailAddress: string | null;
 }) {
+  const [undone, undoAction, undoing] = useActionState<
+    SalesFormState,
+    FormData
+  >(undoDraftRevision, undefined);
   const [saved, saveAction, saving] = useActionState<SalesFormState, FormData>(
     saveEmailDraft,
     undefined,
@@ -149,8 +167,8 @@ export function ReviewPanel({
 
         {!gmailAddress ? (
           <p className="text-xs text-amber-700">
-            Gmail není napojený — Schválit a odeslat poradí, ať ho napojíte
-            v Nastavení, nebo použijte Označit jako odeslaný.
+            Gmail není napojený — Schválit a odeslat poradí, ať ho napojíte v
+            Nastavení, nebo použijte Označit jako odeslaný.
           </p>
         ) : null}
       </form>
@@ -192,6 +210,47 @@ export function ReviewPanel({
           </p>
         ) : null}
       </form>
+
+      {revisions.length > 0 ? (
+        <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+              Historie úprav ({revisions.length})
+            </p>
+            <form action={undoAction}>
+              <input type="hidden" name="draftId" value={draft.id} />
+              <button
+                type="submit"
+                disabled={undoing}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+              >
+                {undoing ? "Vracím…" : "↩ Zpět o krok"}
+              </button>
+            </form>
+          </div>
+          <ol className="space-y-1 text-xs text-slate-600">
+            {revisions.map((revision, index) => (
+              <li key={revision.id} className="flex flex-wrap gap-x-2">
+                <span className="text-slate-400">
+                  {index === 0 ? "naposledy" : `o ${index + 1} kroky zpět`}
+                </span>
+                <span className="min-w-0">
+                  {revision.instruction
+                    ? `„${revision.instruction}“`
+                    : "ruční úprava textu"}
+                </span>
+                <span className="text-slate-400">
+                  {formatDateTime(revision.createdAt)}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <FormError message={undone?.error} />
+          {undone?.success ? (
+            <p className="text-xs text-emerald-700">{undone.success}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <hr className="border-slate-100" />
 

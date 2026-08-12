@@ -298,7 +298,13 @@ async function pendingLeadIds(stats: RunStats): Promise<string[]> {
 }
 
 export async function tickRun(runId: string): Promise<RunSnapshot | null> {
-  const SENDER_FALLBACK = "Mitsov Web";
+  // Kdo e-mail podepisuje: kdo zastupuje studio ve smlouvách, jinak jen
+  // název studia. Předloha majitele se podepisuje jménem, ne jen firmou.
+  const studio = await prisma.studioProfile.findUnique({
+    where: { id: "studio" },
+    select: { representedBy: true },
+  });
+  const SENDER_FALLBACK = studio?.representedBy?.trim() || "Mitsov Web";
   const run = await prisma.salesRun.findUnique({
     where: { id: runId },
     include: { campaign: true },

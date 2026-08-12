@@ -23,7 +23,12 @@ const MODEL_ROUTING: Record<string, { env: string; fallback: string }> = {
   "scout-qualify": { env: "SALES_MODEL_QUALIFY", fallback: "gpt-4o-mini" },
   audit: { env: "SALES_MODEL_AUDIT", fallback: "gpt-4o" },
   contact: { env: "SALES_MODEL_CONTACT", fallback: "gpt-4o" },
-  outreach: { env: "SALES_MODEL_OUTREACH", fallback: "gpt-4o" },
+  // Text e-mailu a HTML konceptu čte člověk a rozhoduje podle nich o oslovení,
+  // takže tady se na modelu nešetří — nejsilnější dostupný.
+  outreach: { env: "SALES_MODEL_OUTREACH", fallback: "gpt-5.5" },
+  designer: { env: "SALES_MODEL_DESIGNER", fallback: "gpt-5.5" },
+  // Research bez záznamu padal na gpt-4o-mini a háčky byly mdlé.
+  research: { env: "SALES_MODEL_RESEARCH", fallback: "gpt-4o" },
   // Dohledání IČO a sídla při zakládání zakázky — web search chce silný model.
   "client-details": { env: "SALES_MODEL_CONTACT", fallback: "gpt-4o" },
 };

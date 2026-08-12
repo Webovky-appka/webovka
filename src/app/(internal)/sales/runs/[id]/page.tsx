@@ -81,9 +81,14 @@ export default async function RunPage(props: {
         </Link>
 
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Běh {formatDateTime(run.createdAt)}
-          </h1>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              {run.label ?? "Běh kampaně"}
+            </h1>
+            <p className="text-sm text-slate-500">
+              {formatDateTime(run.createdAt)}
+            </p>
+          </div>
           <p className="text-sm text-slate-500">
             {RUN_STATUS_LABELS[run.status] ?? run.status}
             {totalCost > 0 ? ` · cena ${formatCost(totalCost)}` : ""}
@@ -94,7 +99,10 @@ export default async function RunPage(props: {
       {live ? <RunTicker runId={run.id} /> : null}
 
       {run.error ? (
-        <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p
+          role="alert"
+          className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {run.error}
         </p>
       ) : null}
@@ -118,7 +126,9 @@ export default async function RunPage(props: {
 
       {leads.length > 0 ? (
         <section className="space-y-3">
-          <h2 className="font-medium text-slate-900">Příležitosti z tohoto běhu</h2>
+          <h2 className="font-medium text-slate-900">
+            Příležitosti z tohoto běhu
+          </h2>
           <ul className="space-y-2">
             {leads.map((lead) => (
               <li

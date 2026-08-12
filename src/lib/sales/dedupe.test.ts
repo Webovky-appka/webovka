@@ -203,3 +203,36 @@ describe("doména sdílené platformy na prospektu", () => {
     expect(isSharedPlatformDomain("")).toBe(false);
   });
 });
+
+describe("ceník novějších modelů", () => {
+  /**
+   * Datované a novější varianty (gpt-5.5-2026-04-23) v tabulce nejsou.
+   * Nesmí spadnout na nulu — tichá nula v analytice je horší než odhad
+   * podle rodiny.
+   */
+  it("neznámou variantu počítá podle rodiny, ne jako nulu", () => {
+    const family = costMicroUsd({
+      model: "gpt-5",
+      tokensIn: 100_000,
+      tokensOut: 10_000,
+    });
+    expect(
+      costMicroUsd({
+        model: "gpt-5.5-2026-04-23",
+        tokensIn: 100_000,
+        tokensOut: 10_000,
+      }),
+    ).toBe(family);
+    expect(
+      costMicroUsd({ model: "gpt-5.4-mini", tokensIn: 1_000_000, tokensOut: 0 }),
+    ).toBe(
+      costMicroUsd({ model: "gpt-5-mini", tokensIn: 1_000_000, tokensOut: 0 }),
+    );
+  });
+
+  it("úplně cizí model zůstává nulový, ale tokeny se zapsaly", () => {
+    expect(
+      costMicroUsd({ model: "llama-nekde", tokensIn: 1_000_000, tokensOut: 0 }),
+    ).toBe(0);
+  });
+});
