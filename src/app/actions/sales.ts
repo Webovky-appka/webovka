@@ -2,6 +2,7 @@
 
 import { Prisma, SalesCampaignStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import * as z from "zod";
 
@@ -15,6 +16,12 @@ import { lookupClientDetails } from "@/lib/sales/client-details";
 import { canRescan, canUndoSend, LOST_REASONS } from "@/lib/sales/funnel";
 import { gradeFor } from "@/lib/sales/human-grades";
 import { MAX_INSTRUCTION_CHARS } from "@/lib/sales/outreach-input";
+import {
+  isPrefOn,
+  SHOW_ARCHIVED_COOKIE,
+  SHOW_REJECTED_COOKIE,
+  VIEW_PREF_MAX_AGE,
+} from "@/lib/sales/view-prefs";
 import { refineDraft } from "@/lib/sales/outreach";
 
 import { createProjectWithPhases } from "./projects";
@@ -995,6 +1002,82 @@ export async function undoWon(
     success: lead.client
       ? `Výhra vzata zpět. Klient „${lead.client.companyName}“ a jeho zakázka zůstávají založené — smazat je jde v Zakázkách.`
       : "Výhra vzata zpět, příležitost je mezi oslovenými.",
+  };
+}
+
+/**
+ * Přepne rozbalenou sekci a zapamatuje si to v cookie — po návratu na
+ * stránku zůstane otevřená. Dřív to byl parametr v adrese, takže se sekce
+ * po každém příchodu zavřela.
+ */
+export async function toggleViewPref(formData: FormData) {
+  await requireUser();
+
+  const name = String(formData.get("pref") ?? "");
+  if (name !== SHOW_REJECTED_COOKIE && name !== SHOW_ARCHIVED_COOKIE) return;
+
+  const store = await cookies();
+  const next = isPrefOn(store.get(name)?.value) ? "0" : "1";
+  store.set(name, next, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: VIEW_PREF_MAX_AGE,
+  });
+
+  const path = String(formData.get("path") ?? "");
+  // Revalidace jen na známé cesty AI Sales, ať se sem nedá podstrčit cizí.
+  if (path === "/sales" || /^\/sales\/[A-Za-z0-9_-]+$/.test(path)) {
+    revalidatePath(path);
+  }
+}
+
+/**
+ * Vlastní poznámka k příležitosti. Nechodí do žádného promptu — je to
+ * lidská paměť („zkusit na jaře", „majitel byl nepříjemný"), která se
+ * ukazuje i v rozbaleném seznamu zamítnutých.
+ */
+export async function saveOwnerNote(
+  _prevState: SalesFormState,
+  formData: FormData,
+): Promise<SalesFormState> {
+  const user = await requireUser();
+
+  const leadId = String(formData.get("leadId") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  if (note.length > 500) return { error: "Poznámka je příliš dlouhá." };
+
+  const lead = await prisma.salesLead.findUnique({
+    where: { id: leadId },
+    select: { id: true, prospectId: true, campaignId: true, ownerNote: true },
+  });
+  if (!lead) return { error: "Příležitost nenalezena." };
+  if ((lead.ownerNote ?? "") === note) {
+    return { success: "Poznámka se nezměnila." };
+  }
+
+  await prisma.salesLead.update({
+    where: { id: leadId },
+    data: { ownerNote: note === "" ? null : note },
+  });
+  await prisma.salesActivity.create({
+    data: {
+      prospectId: lead.prospectId,
+      leadId,
+      actor: "user",
+      kind: "note",
+      body:
+        note === ""
+          ? `${user.name} smazal svoji poznámku k příležitosti.`
+          : `${user.name} si zapsal: „${note.slice(0, 200)}“`,
+    },
+  });
+
+  revalidatePath(`/sales/leads/${leadId}`);
+  revalidatePath(`/sales/${lead.campaignId}`);
+  return {
+    success: note === "" ? "Poznámka smazána." : "Poznámka uložena.",
   };
 }
 

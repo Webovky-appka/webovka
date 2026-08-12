@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { OutcomePanel } from "@/components/sales/outcome-panel";
 import { ReauditButton } from "@/components/sales/reaudit-button";
+import { OwnerNoteForm } from "@/components/sales/owner-note-form";
 import { ReopenButton } from "@/components/sales/reopen-button";
 import { RateWebsite } from "@/components/sales/rate-website";
 import { RescanButton } from "@/components/sales/rescan-button";
@@ -252,6 +253,7 @@ export default async function LeadPage(props: {
             </p>
           </div>
           <ReopenButton leadId={lead.id} />
+          <OwnerNoteForm leadId={lead.id} note={lead.ownerNote} />
           {lead.status === "REJECTED" ? (
             <p className="text-xs text-red-800/70">
               Otevřením se rozjede kompletní proskenování a příležitost skončí
@@ -390,8 +392,8 @@ export default async function LeadPage(props: {
       ) : lead.mockupVariant === "none" ? (
         <p className="rounded-xl border border-dashed border-slate-200 px-5 py-3 text-xs text-slate-500">
           Experiment Designera: tahle příležitost je v kontrolní skupině —
-          e-mail jde záměrně bez konceptu homepage, ať jde změřit, jestli
-          ukázka zvedá odpovědi.
+          e-mail jde záměrně bez konceptu homepage, ať jde změřit, jestli ukázka
+          zvedá odpovědi.
         </p>
       ) : null}
 
@@ -487,7 +489,9 @@ export default async function LeadPage(props: {
                 <dt className="text-xs text-slate-500">{label}</dt>
                 <dd className="text-lg font-semibold text-slate-900">
                   {value ?? "—"}
-                  <span className="text-xs font-normal text-slate-400">/100</span>
+                  <span className="text-xs font-normal text-slate-400">
+                    /100
+                  </span>
                 </dd>
               </div>
             ))}
