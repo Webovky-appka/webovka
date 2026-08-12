@@ -15,6 +15,7 @@ import {
   businessDayKey,
   formatDayHeading,
   formatRelativeDays,
+  formatDate,
   isContactStale,
   isDueTodayOrOverdue,
   isOverdue,
@@ -69,11 +70,23 @@ export default async function ProjectsPage(props: {
   const dashboardSections =
     dismissedDay === dayKey ? null : await buildDashboardSections();
 
-  // Rozjednané akvizice z AI Sales — oslovené firmy před výhrou. Zakázka
-  // z nich vznikne až po vyhrané příležitosti, ale obchodní rozpracovanost
-  // patří na oči vedle zakázek.
+  // Rozjednané akvizice z AI Sales: připravené a naplánované e-maily plus
+  // oslovené firmy před výhrou. Zakázka z nich vznikne až po výhře, ale
+  // rozpracovanost patří na oči vedle zakázek — jinak se na připravený
+  // koncept zapomene.
   const acquisitions = await prisma.salesLead.findMany({
-    where: { status: { in: ["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"] } },
+    where: {
+      status: {
+        in: [
+          "APPROVED",
+          "SCHEDULED",
+          "CONTACTED",
+          "REPLIED",
+          "MEETING",
+          "PROPOSAL",
+        ],
+      },
+    },
     orderBy: { updatedAt: "desc" },
     include: {
       prospect: { select: { name: true, domain: true } },
@@ -216,8 +229,9 @@ export default async function ProjectsPage(props: {
               Rozjednané akvizice
             </h2>
             <p className="text-sm text-slate-500">
-              Oslovené firmy z AI Sales. Zakázka z nich vznikne po výhře —
-              výsledky zapisujte na detailu příležitosti.
+              Připravené a naplánované e-maily a oslovené firmy z AI Sales.
+              Zakázka z nich vznikne po výhře — výsledky zapisujte na detailu
+              příležitosti.
             </p>
           </div>
           <ul className="space-y-1.5">
@@ -238,6 +252,9 @@ export default async function ProjectsPage(props: {
                   </span>
                   <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs text-sky-800 ring-1 ring-sky-100 ring-inset">
                     {ACQUISITION_LABELS[lead.status] ?? lead.status}
+                    {lead.status === "SCHEDULED" && lead.scheduledFor
+                      ? ` ${formatDate(lead.scheduledFor)}`
+                      : ""}
                   </span>
                   <span className="text-xs text-slate-400">
                     {formatRelativeDays(lead.updatedAt)}
@@ -253,6 +270,8 @@ export default async function ProjectsPage(props: {
 }
 
 const ACQUISITION_LABELS: Record<string, string> = {
+  APPROVED: "Koncept připraven",
+  SCHEDULED: "Naplánováno na",
   CONTACTED: "Oslovená",
   REPLIED: "Odpověděli",
   MEETING: "Schůzka",
@@ -266,7 +285,10 @@ const ACQUISITION_LABELS: Record<string, string> = {
 async function buildDashboardSections(): Promise<DashboardSection[]> {
   const soon = new Date(Date.now() + 2 * 86_400_000);
 
-  const [reviewLeads, repliedLeads, dueTasks, activeProjects] =
+  // Naplánované na dnes a starší: co mělo odejít, patří do dnešního přehledu.
+  const scheduleCutoff = new Date(Date.now() + 86_400_000);
+
+  const [reviewLeads, scheduledLeads, repliedLeads, dueTasks, activeProjects] =
     await Promise.all([
       prisma.salesLead.findMany({
         where: {
@@ -274,6 +296,15 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
           campaign: { status: { not: "ARCHIVED" } },
         },
         orderBy: { score: "desc" },
+        include: { prospect: { select: { name: true } } },
+      }),
+      prisma.salesLead.findMany({
+        where: {
+          status: "SCHEDULED",
+          scheduledFor: { lt: scheduleCutoff },
+          campaign: { status: { not: "ARCHIVED" } },
+        },
+        orderBy: { scheduledFor: "asc" },
         include: { prospect: { select: { name: true } } },
       }),
       prisma.salesLead.findMany({
@@ -345,6 +376,19 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
         href: `/sales/leads/${lead.id}`,
         meta: lead.score !== null ? `skóre ${lead.score}` : undefined,
         metaTone: "good" as const,
+      })),
+    },
+    {
+      key: "scheduled",
+      title: "Naplánované e-maily k odeslání",
+      count: scheduledLeads.length,
+      href: "/sales",
+      tone: "amber",
+      items: scheduledLeads.slice(0, 3).map((lead) => ({
+        label: lead.prospect.name,
+        href: `/sales/leads/${lead.id}`,
+        meta: lead.scheduledFor ? formatDate(lead.scheduledFor) : undefined,
+        metaTone: "alert" as const,
       })),
     },
     {

@@ -7,17 +7,25 @@ import {
 } from "./status-style";
 
 describe("fáze příležitosti podle stavu", () => {
-  it("před oslovením je všechno v přípravě", () => {
+  it("dokud na příležitosti pracují agenti, je v přípravě", () => {
     for (const status of [
       "DISCOVERED",
       "QUALIFYING",
       "QUALIFIED",
       "RESEARCHING",
       "READY_FOR_REVIEW",
-      "APPROVED",
     ]) {
       expect(leadPhase(status)).toBe("prep");
     }
+  });
+
+  /**
+   * Připravený a naplánovaný e-mail už čeká na člověka, ne na agenty —
+   * proto stejná barva jako u jednání a proto se ukazuje v Zakázkách.
+   */
+  it("připravený a naplánovaný e-mail patří k rozjednaným", () => {
+    expect(leadPhase("APPROVED")).toBe("talking");
+    expect(leadPhase("SCHEDULED")).toBe("talking");
   });
 
   it("po oslovení se jedná, výhra a prohra jsou samostatné", () => {

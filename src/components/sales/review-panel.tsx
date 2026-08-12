@@ -4,11 +4,14 @@ import { useActionState } from "react";
 
 import {
   approveAndSendEmail,
+  markDraftReady,
   markEmailSentManually,
   refineEmailDraft,
   rejectLead,
   saveEmailDraft,
+  scheduleDraft,
   undoDraftRevision,
+  unscheduleDraft,
   type SalesFormState,
 } from "@/app/actions/sales";
 import { formatDateTime } from "@/lib/format";
@@ -39,6 +42,8 @@ export function ReviewPanel({
   draft,
   revisions,
   leadId,
+  leadStatus,
+  scheduledFor,
   defaultTo,
   gmailAddress,
 }: {
@@ -46,9 +51,15 @@ export function ReviewPanel({
   /** Historie od nejnovější — první je ta, na kterou vrátí tlačítko Zpět. */
   revisions: DraftRevision[];
   leadId: string;
+  leadStatus: string;
+  scheduledFor: Date | null;
   defaultTo: string;
   gmailAddress: string | null;
 }) {
+  // Input typu date chce YYYY-MM-DD; bez toho by se uložený termín nepředvyplnil.
+  const scheduledForValue = scheduledFor
+    ? scheduledFor.toISOString().slice(0, 10)
+    : null;
   const [undone, undoAction, undoing] = useActionState<
     SalesFormState,
     FormData
@@ -73,6 +84,18 @@ export function ReviewPanel({
     SalesFormState,
     FormData
   >(refineEmailDraft, undefined);
+  const [readied, readyAction, readying] = useActionState<
+    SalesFormState,
+    FormData
+  >(markDraftReady, undefined);
+  const [scheduled, scheduleAction, scheduling] = useActionState<
+    SalesFormState,
+    FormData
+  >(scheduleDraft, undefined);
+  const [unscheduled, unscheduleAction, unscheduling] = useActionState<
+    SalesFormState,
+    FormData
+  >(unscheduleDraft, undefined);
 
   const feedback = sent ?? marked ?? saved;
 
@@ -172,6 +195,73 @@ export function ReviewPanel({
           </p>
         ) : null}
       </form>
+
+      <hr className="border-slate-100" />
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+          Ještě neodesílám
+        </p>
+        <div className="flex flex-wrap items-start gap-2">
+          <form action={readyAction}>
+            <input type="hidden" name="draftId" value={draft.id} />
+            <button
+              type="submit"
+              disabled={readying}
+              className={secondaryButton}
+            >
+              {readying ? "Ukládám…" : "Koncept připraven"}
+            </button>
+          </form>
+
+          <form
+            action={scheduleAction}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="draftId" value={draft.id} />
+            <input
+              type="date"
+              name="scheduledFor"
+              defaultValue={scheduledForValue ?? ""}
+              aria-label="Den, kdy má e-mail odejít"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-sky-500"
+            />
+            <button
+              type="submit"
+              disabled={scheduling}
+              className={secondaryButton}
+            >
+              {scheduling ? "Ukládám…" : "E-mail naplánovaný"}
+            </button>
+          </form>
+
+          {leadStatus === "APPROVED" || leadStatus === "SCHEDULED" ? (
+            <form action={unscheduleAction}>
+              <input type="hidden" name="leadId" value={leadId} />
+              <button
+                type="submit"
+                disabled={unscheduling}
+                className="px-1 py-2 text-xs text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline disabled:opacity-60"
+              >
+                {unscheduling ? "Vracím…" : "↩ Zpět do fronty ke schválení"}
+              </button>
+            </form>
+          ) : null}
+        </div>
+        <p className="text-xs text-slate-500">
+          Obojí posune příležitost do Zakázek mezi rozjednané akvizice, ať na ni
+          nezapomenete. Text zůstává rozpracovaný a odeslání je pořád na vás —
+          aplikace cold e-maily sama neposílá.
+        </p>
+        <FormError
+          message={readied?.error ?? scheduled?.error ?? unscheduled?.error}
+        />
+        {(readied?.success ?? scheduled?.success ?? unscheduled?.success) ? (
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            {readied?.success ?? scheduled?.success ?? unscheduled?.success}
+          </p>
+        ) : null}
+      </div>
 
       <hr className="border-slate-100" />
 

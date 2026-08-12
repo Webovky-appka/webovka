@@ -49,6 +49,7 @@ const LEAD_GROUPS: {
       "RESEARCHING",
       "READY_FOR_REVIEW",
       "APPROVED",
+      "SCHEDULED",
     ],
   },
   {
@@ -66,7 +67,8 @@ const LEAD_LABELS: Record<string, string> = {
   QUALIFIED: "Kvalifikovaná",
   RESEARCHING: "Doplňuje se research",
   READY_FOR_REVIEW: "Ke schválení",
-  APPROVED: "Schválená",
+  APPROVED: "Koncept připraven",
+  SCHEDULED: "Naplánováno",
   CONTACTED: "Oslovená",
   REPLIED: "Odpověděli",
   MEETING: "Schůzka",
