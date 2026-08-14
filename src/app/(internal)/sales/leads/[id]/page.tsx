@@ -10,10 +10,11 @@ import { RescanButton } from "@/components/sales/rescan-button";
 import { ReviewPanel } from "@/components/sales/review-panel";
 import { UndoWonButton } from "@/components/sales/undo-won-button";
 import { requireUser } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { googleAccountFor } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
 import { isSharedPlatformDomain } from "@/lib/sales/dedupe";
+import { followUpNote, needsFollowUp } from "@/lib/sales/follow-up";
 import { canRescan } from "@/lib/sales/funnel";
 import { SCORE_FORMULA_HINT } from "@/lib/sales/score";
 import {
@@ -83,7 +84,7 @@ export default async function LeadPage(props: {
       audits: { orderBy: { createdAt: "desc" }, take: 1 },
       emails: {
         orderBy: { createdAt: "desc" },
-        take: 1,
+        take: 5,
         include: { revisions: { orderBy: { createdAt: "desc" }, take: 10 } },
       },
       activities: { orderBy: { createdAt: "desc" }, take: 50 },
@@ -108,6 +109,13 @@ export default async function LeadPage(props: {
       lead.status,
     );
   const rescanAllowed = canRescan(lead.status);
+  // Poslední skutečně odeslaný e-mail — z něj se počítá připomínka druhého
+  // oslovení. Rozpracované návrhy do toho nemluví.
+  const sentDraft = lead.emails.find((email) => email.status === "SENT") ?? null;
+  const followUpDue = needsFollowUp({
+    status: lead.status,
+    sentAt: sentDraft?.sentAt,
+  });
   const audit = lead.audits[0] ?? null;
   const findings = (audit?.findings ?? {}) as Findings;
   const evidence = (findings.evidence ?? []).filter((item) =>
@@ -432,6 +440,22 @@ export default async function LeadPage(props: {
           defaultTo={primaryContact?.email ?? ""}
           gmailAddress={gmailAccount?.email ?? null}
         />
+      ) : null}
+
+      {followUpDue && sentDraft?.sentAt ? (
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-5">
+          <h2 className="text-sm font-semibold text-amber-900">
+            Čas na druhé oslovení
+          </h2>
+          <p className="mt-1 text-sm text-amber-900/80">
+            {followUpNote(sentDraft.sentAt)}
+          </p>
+          <p className="mt-2 text-xs text-amber-900/70">
+            Odesláno {formatDate(sentDraft.sentAt)}. Návrh druhého e-mailu
+            zatím nepíšeme — napište ho ručně, nebo příležitost proskenujte
+            znovu a nechte agenty připravit nový text.
+          </p>
+        </section>
       ) : null}
 
       {["CONTACTED", "REPLIED", "MEETING", "PROPOSAL"].includes(lead.status) ? (
