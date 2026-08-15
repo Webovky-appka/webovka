@@ -24,6 +24,11 @@ import {
 } from "@/lib/format";
 import { activePhase, sortPhases } from "@/lib/phases";
 import { prisma } from "@/lib/prisma";
+import {
+  daysSince,
+  FOLLOW_UP_AFTER_DAYS,
+  needsFollowUp,
+} from "@/lib/sales/follow-up";
 
 export const metadata = {
   title: "Zakázky — Mitsov Web",
@@ -91,6 +96,12 @@ export default async function ProjectsPage(props: {
     include: {
       prospect: { select: { name: true, domain: true } },
       campaign: { select: { name: true } },
+      emails: {
+        where: { status: "SENT" },
+        orderBy: { sentAt: "desc" },
+        take: 1,
+        select: { sentAt: true },
+      },
     },
   });
 
@@ -225,9 +236,7 @@ export default async function ProjectsPage(props: {
       {acquisitions.length > 0 ? (
         <section className="space-y-3">
           <div>
-            <h2 className="font-medium text-slate-900">
-              Rozjednané akvizice
-            </h2>
+            <h2 className="font-medium text-slate-900">Rozjednané akvizice</h2>
             <p className="text-sm text-slate-500">
               Připravené a naplánované e-maily a oslovené firmy z AI Sales.
               Zakázka z nich vznikne po výhře — výsledky zapisujte na detailu
@@ -257,7 +266,12 @@ export default async function ProjectsPage(props: {
                       : ""}
                   </span>
                   <span className="text-xs text-slate-400">
-                    {formatRelativeDays(lead.updatedAt)}
+                    {needsFollowUp({
+                      status: lead.status,
+                      sentAt: lead.emails[0]?.sentAt,
+                    })
+                      ? `${daysSince(lead.emails[0]!.sentAt!)} dní bez odpovědi`
+                      : formatRelativeDays(lead.updatedAt)}
                   </span>
                 </Link>
               </li>
@@ -288,67 +302,95 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
   // Naplánované na dnes a starší: co mělo odejít, patří do dnešního přehledu.
   const scheduleCutoff = new Date(Date.now() + 86_400_000);
 
-  const [reviewLeads, scheduledLeads, repliedLeads, dueTasks, activeProjects] =
-    await Promise.all([
-      prisma.salesLead.findMany({
-        where: {
-          status: "READY_FOR_REVIEW",
-          campaign: { status: { not: "ARCHIVED" } },
+  const followUpCutoff = new Date(
+    Date.now() - FOLLOW_UP_AFTER_DAYS * 86_400_000,
+  );
+
+  const [
+    reviewLeads,
+    scheduledLeads,
+    repliedLeads,
+    followUpLeads,
+    dueTasks,
+    activeProjects,
+  ] = await Promise.all([
+    prisma.salesLead.findMany({
+      where: {
+        status: "READY_FOR_REVIEW",
+        campaign: { status: { not: "ARCHIVED" } },
+      },
+      orderBy: { score: "desc" },
+      include: { prospect: { select: { name: true } } },
+    }),
+    prisma.salesLead.findMany({
+      where: {
+        status: "SCHEDULED",
+        scheduledFor: { lt: scheduleCutoff },
+        campaign: { status: { not: "ARCHIVED" } },
+      },
+      orderBy: { scheduledFor: "asc" },
+      include: { prospect: { select: { name: true } } },
+    }),
+    prisma.salesLead.findMany({
+      where: {
+        status: "REPLIED",
+        campaign: { status: { not: "ARCHIVED" } },
+      },
+      orderBy: { updatedAt: "desc" },
+      include: { prospect: { select: { name: true } } },
+    }),
+    // Oslovené bez odpovědi: kdo z nich čeká dost dlouho, rozhodne
+    // needsFollowUp — SQL zvládne jen hrubý předvýběr podle data odeslání.
+    prisma.salesLead.findMany({
+      where: {
+        status: "CONTACTED",
+        campaign: { status: { not: "ARCHIVED" } },
+        emails: { some: { status: "SENT", sentAt: { lt: followUpCutoff } } },
+      },
+      include: {
+        prospect: { select: { name: true } },
+        emails: {
+          where: { status: "SENT" },
+          orderBy: { sentAt: "desc" },
+          take: 1,
+          select: { sentAt: true },
         },
-        orderBy: { score: "desc" },
-        include: { prospect: { select: { name: true } } },
-      }),
-      prisma.salesLead.findMany({
-        where: {
-          status: "SCHEDULED",
-          scheduledFor: { lt: scheduleCutoff },
-          campaign: { status: { not: "ARCHIVED" } },
+      },
+    }),
+    // Hrubý předvýběr přes SQL (se zónovou rezervou), přesný český
+    // kalendář rozhodne isDueTodayOrOverdue.
+    prisma.task.findMany({
+      where: { done: false, dueDate: { not: null, lte: soon } },
+      orderBy: { dueDate: "asc" },
+      include: {
+        project: {
+          select: {
+            id: true,
+            clientId: true,
+            client: { select: { companyName: true } },
+          },
         },
-        orderBy: { scheduledFor: "asc" },
-        include: { prospect: { select: { name: true } } },
-      }),
-      prisma.salesLead.findMany({
-        where: {
-          status: "REPLIED",
-          campaign: { status: { not: "ARCHIVED" } },
-        },
-        orderBy: { updatedAt: "desc" },
-        include: { prospect: { select: { name: true } } },
-      }),
-      // Hrubý předvýběr přes SQL (se zónovou rezervou), přesný český
-      // kalendář rozhodne isDueTodayOrOverdue.
-      prisma.task.findMany({
-        where: { done: false, dueDate: { not: null, lte: soon } },
-        orderBy: { dueDate: "asc" },
-        include: {
-          project: {
-            select: {
-              id: true,
-              clientId: true,
-              client: { select: { companyName: true } },
+      },
+    }),
+    prisma.project.findMany({
+      where: { status: ProjectStatus.ACTIVE },
+      select: {
+        id: true,
+        name: true,
+        client: {
+          select: {
+            id: true,
+            companyName: true,
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { createdAt: true },
             },
           },
         },
-      }),
-      prisma.project.findMany({
-        where: { status: ProjectStatus.ACTIVE },
-        select: {
-          id: true,
-          name: true,
-          client: {
-            select: {
-              id: true,
-              companyName: true,
-              messages: {
-                orderBy: { createdAt: "desc" },
-                take: 1,
-                select: { createdAt: true },
-              },
-            },
-          },
-        },
-      }),
-    ]);
+      },
+    }),
+  ]);
 
   const todayTasks = dueTasks.filter((task) =>
     isDueTodayOrOverdue(task.dueDate),
@@ -361,7 +403,8 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
     }))
     .filter(({ lastContact }) => isContactStale(lastContact))
     .sort(
-      (a, b) => (a.lastContact?.getTime() ?? 0) - (b.lastContact?.getTime() ?? 0),
+      (a, b) =>
+        (a.lastContact?.getTime() ?? 0) - (b.lastContact?.getTime() ?? 0),
     );
 
   return [
@@ -401,6 +444,20 @@ async function buildDashboardSections(): Promise<DashboardSection[]> {
         label: lead.prospect.name,
         href: `/sales/leads/${lead.id}`,
         meta: formatRelativeDays(lead.updatedAt),
+      })),
+    },
+    {
+      key: "followup",
+      title: "Čas na druhé oslovení",
+      count: followUpLeads.length,
+      href: "/sales",
+      tone: "slate",
+      items: followUpLeads.slice(0, 3).map((lead) => ({
+        label: lead.prospect.name,
+        href: `/sales/leads/${lead.id}`,
+        meta: lead.emails[0]?.sentAt
+          ? `${daysSince(lead.emails[0].sentAt)} dní bez odpovědi`
+          : undefined,
       })),
     },
     {
